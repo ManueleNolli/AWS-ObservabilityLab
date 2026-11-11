@@ -1,0 +1,142 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f7f7f8;
+  --surface: #ffffff;
+  --text: #1c1d21;
+  --muted: #6b6e76;
+  --border: #e2e3e7;
+  --accent: #3b5bdb;
+  --ok: #2b8a3e;
+  --warning: #b35c00;
+  --error: #c92a2a;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141518;
+    --surface: #1d1f23;
+    --text: #e8e9ec;
+    --muted: #9a9da5;
+    --border: #2e3036;
+    --accent: #748ffc;
+    --ok: #69db7c;
+    --warning: #ffa94d;
+    --error: #ff8787;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 16px;
+}
+
+header p {
+  color: var(--muted);
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin: 24px 0 40px;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.actions button {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  text-align: left;
+}
+
+.actions button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.actions button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.actions small {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.actions .danger {
+  border-left: 4px solid var(--error);
+}
+
+.actions .accent {
+  border-left: 4px solid var(--accent);
+}
+
+.activity-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.link {
+  border: none;
+  background: none;
+  color: var(--accent);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+th,
+td {
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+td:nth-child(2) {
+  font-family: ui-monospace, monospace;
+  word-break: break-all;
+}
+
+tr.ok td:nth-child(3) {
+  color: var(--ok);
+}
+
+tr.warning td:nth-child(3) {
+  color: var(--warning);
+}
+
+tr.error td:nth-child(3) {
+  color: var(--error);
+}

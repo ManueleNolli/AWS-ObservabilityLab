@@ -1,0 +1,76 @@
+# Local stack: the app plus the self-hosted monitoring tools, no AWS account needed.
+#   App:        http://localhost:8080  (ports can be changed with APP_PORT, GRAFANA_PORT, PROMETHEUS_PORT)
+#   Grafana:    http://localhost:3000
+#   Prometheus: http://localhost:9090
+name: observability-lab
+
+services:
+  backend:
+    build: ./backend
+    environment:
+      LAB_LOG_LEVEL: INFO
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  frontend:
+    image: nginx:1.29-alpine
+    ports:
+      - "127.0.0.1:${APP_PORT:-8080}:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./local/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v3.8.0
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./local/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+
+  loki:
+    image: grafana/loki:3.6.0
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./local/loki/loki.yml:/etc/loki/loki.yml:ro
+
+  alloy:
+    image: grafana/alloy:v1.12.0
+    command:
+      - run
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./local/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:12.3.0
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    environment:
+      # Local only: open Grafana without a login.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/app-overview.json
+    volumes:
+      - ./local/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+
+volumes:
+  prometheus-data:
+  grafana-data:

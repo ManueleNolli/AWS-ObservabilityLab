@@ -1,0 +1,51 @@
+# Alert rules shared by every environment (local, self_hosted, managed).
+# Thresholds are tuned for click-driven demo traffic, so a few clicks can fire them.
+groups:
+  - name: observability-lab
+    rules:
+      - alert: BackendDown
+        expr: up{job="backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backend target {{ $labels.instance }} is down"
+          description: "Prometheus could not scrape {{ $labels.instance }} for 1 minute."
+
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{job="backend", status=~"5.."}[5m]))
+            /
+          sum(rate(http_requests_total{job="backend"}[5m]))
+            > 0.05
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 5% of requests are failing"
+          description: "Server error ratio is {{ $value | humanizePercentage }} over the last 5 minutes."
+
+      - alert: CheckoutSlow
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_request_duration_seconds_bucket{job="backend", route="/api/checkout"}[5m]))
+          ) > 2
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Checkout p95 latency is above 2s"
+          description: "Checkout p95 latency is {{ $value | humanizeDuration }}."
+
+      - alert: LoginFailureSpike
+        expr: |
+          sum(rate(http_requests_total{job="backend", route="/api/login", status="401"}[5m]))
+            /
+          sum(rate(http_requests_total{job="backend", route="/api/login"}[5m]))
+            > 0.3
+        for: 1m
+        labels:
+          severity: info
+        annotations:
+          summary: "More than 30% of logins are rejected"
+          description: "Login rejection ratio is {{ $value | humanizePercentage }}."
