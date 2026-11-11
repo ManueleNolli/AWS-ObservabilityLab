@@ -1,39 +1,14 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Turn clicks into metrics and logs, observed with Prometheus and Grafana." />
     <title>Observability Lab</title>
-    <link rel="stylesheet" href="styles.css" />
-    <script src="app.js" defer></script>
   </head>
   <body>
-    <main>
-      <header>
-        <h1>Observability Lab</h1>
-        <p>Every click becomes a request, a metric and a log line. Watch them land in Grafana.</p>
-      </header>
-
-      <section class="actions" aria-label="Actions">
-        <button type="button" data-action="login">Login <small>sometimes fails</small></button>
-        <button type="button" data-action="checkout">Checkout <small>slow, occasional 500</small></button>
-        <button type="button" data-action="search">Search <small>fast</small></button>
-        <button type="button" data-action="error" class="danger">Trigger error <small>always 500</small></button>
-        <button type="button" data-action="random" class="accent">Random <small>burst of mixed requests</small></button>
-      </section>
-
-      <section aria-labelledby="activity-title">
-        <div class="activity-header">
-          <h2 id="activity-title">Activity</h2>
-          <button type="button" id="clear" class="link">Clear</button>
-        </div>
-        <table>
-          <thead>
-            <tr><th>Time</th><th>Request</th><th>Status</th><th>Latency</th></tr>
-          </thead>
-          <tbody id="activity"></tbody>
-        </table>
-      </section>
-    </main>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

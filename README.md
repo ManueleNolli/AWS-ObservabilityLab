@@ -8,7 +8,7 @@ A tiny web app on AWS Fargate that turns user clicks into metrics and logs, obse
 | Path | Contents |
 | --- | --- |
 | `backend/` | FastAPI service (Python, managed with [uv](https://docs.astral.sh/uv/)) |
-| `frontend/` | Static page, plain HTML/JS |
+| `frontend/` | Vue 3 + TypeScript single-page app, built with Vite into static files |
 | `observability/` | Grafana dashboards and Prometheus alert rules, shared by every environment |
 | `local/` | Config for the local Docker Compose stack only |
 
@@ -48,6 +48,21 @@ uv sync
 uv run pytest
 uv run ruff check . && uv run ruff format --check .
 ```
+
+## Frontend
+
+```bash
+cd frontend
+npm ci
+npm run dev        # http://localhost:5173, proxies /api to the compose stack on :8080
+npm test
+npm run type-check && npm run lint && npm run format:check
+npm run build      # static files in dist/
+```
+
+Set `VITE_GRAFANA_URL` at build time to show an "Open Grafana" link in the header.
+
+## Alert rules
 
 Alert rules have their own unit tests:
 
