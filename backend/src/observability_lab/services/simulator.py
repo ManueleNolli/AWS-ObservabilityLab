@@ -1,4 +1,4 @@
-"""Randomised latency and failures that make the demo endpoints interesting to observe."""
+"""Randomised latency and failures that make the demo services interesting to observe."""
 
 import asyncio
 import random

@@ -13,8 +13,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
-from observability_lab.logs import request_id_var
-from observability_lab.metrics import HttpMetrics
+from observability_lab.observability.logs import request_id_var
+from observability_lab.observability.metrics import HttpMetrics
 
 logger = logging.getLogger("observability_lab.access")
 
@@ -34,13 +34,16 @@ def matched_route(request: Request) -> str:
 
 class ObservabilityMiddleware(BaseHTTPMiddleware):
     def __init__(
-        self, app: ASGIApp, metrics: HttpMetrics, excluded_routes: frozenset[str] = frozenset()
+        self, app: ASGIApp, metrics: HttpMetrics, excluded_paths: frozenset[str] = frozenset()
     ) -> None:
         super().__init__(app)
         self._metrics = metrics
-        self._excluded_routes = excluded_routes
+        self._excluded_paths = excluded_paths
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        if request.url.path in self._excluded_paths:
+            return await call_next(request)
+
         method = request.method
         request_id = uuid.uuid4().hex
         token = request_id_var.set(request_id)
@@ -50,9 +53,9 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
         try:
             response = await self._call_safely(request, call_next)
             duration = time.perf_counter() - start
-            route = matched_route(request)
-            if route not in self._excluded_routes:
-                self._record(method, route, response.status_code, duration, request.url.path)
+            self._record(
+                method, matched_route(request), response.status_code, duration, request.url.path
+            )
             response.headers["X-Request-ID"] = request_id
             return response
         finally:

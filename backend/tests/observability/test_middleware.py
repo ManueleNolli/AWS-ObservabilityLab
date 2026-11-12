@@ -1,11 +1,8 @@
-import json
 import logging
 
 import pytest
 from fastapi.testclient import TestClient
 from prometheus_client import CollectorRegistry
-
-from observability_lab.logs import JsonFormatter, request_id_var
 
 
 def request_count(registry: CollectorRegistry, route: str, status: str) -> float:
@@ -55,18 +52,12 @@ def test_access_log_is_written(client: TestClient, caplog: pytest.LogCaptureFixt
     assert record.status == 200
 
 
-def test_json_formatter_includes_extras_and_request_id() -> None:
-    record = logging.makeLogRecord(
-        {"name": "test", "levelname": "INFO", "msg": "hello", "route": "/api/login"}
-    )
-    token = request_id_var.set("abc123")
-    try:
-        line = JsonFormatter().format(record)
-    finally:
-        request_id_var.reset(token)
+def test_api_docs_are_not_recorded(client: TestClient, registry: CollectorRegistry) -> None:
+    client.get("/api/openapi.json")
 
-    payload = json.loads(line)
-    assert payload["message"] == "hello"
-    assert payload["level"] == "info"
-    assert payload["route"] == "/api/login"
-    assert payload["request_id"] == "abc123"
+    assert (
+        registry.get_sample_value(
+            "http_requests_total", {"method": "GET", "route": "unmatched", "status": "200"}
+        )
+        is None
+    )

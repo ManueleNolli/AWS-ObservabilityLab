@@ -21,13 +21,18 @@ def test_login_fails_at_configured_rate(make_client: ClientFactory) -> None:
 
 
 def test_checkout_succeeds(client: TestClient) -> None:
-    assert client.post("/api/checkout").json() == {"status": "order_placed"}
+    body = client.post("/api/checkout").json()
+
+    assert body["status"] == "order_placed"
+    assert body["order_id"]
 
 
 def test_checkout_fails_at_configured_rate(make_client: ClientFactory) -> None:
     client = make_client(checkout_error_rate=1)
+    response = client.post("/api/checkout")
 
-    assert client.post("/api/checkout").status_code == 500
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Payment provider unavailable"}
 
 
 def test_search_echoes_query(client: TestClient) -> None:

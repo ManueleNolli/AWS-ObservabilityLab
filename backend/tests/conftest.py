@@ -5,9 +5,9 @@ import pytest
 from fastapi.testclient import TestClient
 from prometheus_client import CollectorRegistry
 
+from observability_lab.app import create_app
 from observability_lab.config import Settings
-from observability_lab.main import create_app
-from observability_lab.simulation import Simulator
+from observability_lab.services.simulator import Simulator
 
 ClientFactory = Callable[..., TestClient]
 
@@ -46,3 +46,8 @@ def make_client(registry: CollectorRegistry) -> Iterator[ClientFactory]:
 @pytest.fixture
 def client(make_client: ClientFactory) -> TestClient:
     return make_client()
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"

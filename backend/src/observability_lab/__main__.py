@@ -2,9 +2,9 @@
 
 import uvicorn
 
+from observability_lab.app import create_app
 from observability_lab.config import Settings
-from observability_lab.logs import configure_logging
-from observability_lab.main import create_app
+from observability_lab.observability.logs import configure_logging
 
 
 def main() -> None:
