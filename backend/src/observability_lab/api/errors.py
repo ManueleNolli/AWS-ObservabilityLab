@@ -1,6 +1,4 @@
-"""Maps service errors to HTTP responses. Anything else stays an unhandled 500."""
-
-from collections.abc import Awaitable, Callable
+"""Turns service errors into HTTP responses. Any other exception stays an unhandled 500."""
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
@@ -17,13 +15,10 @@ STATUS_BY_ERROR: dict[type[ServiceError], int] = {
 }
 
 
+async def handle_service_error(_: Request, exc: Exception) -> JSONResponse:
+    status_code = STATUS_BY_ERROR.get(type(exc), status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return JSONResponse({"detail": str(exc)}, status_code=status_code)
+
+
 def register_error_handlers(app: FastAPI) -> None:
-    for error_type, status_code in STATUS_BY_ERROR.items():
-        app.add_exception_handler(error_type, _responder(status_code))
-
-
-def _responder(status_code: int) -> Callable[[Request, Exception], Awaitable[JSONResponse]]:
-    async def respond(_: Request, exc: Exception) -> JSONResponse:
-        return JSONResponse({"detail": str(exc)}, status_code=status_code)
-
-    return respond
+    app.add_exception_handler(ServiceError, handle_service_error)

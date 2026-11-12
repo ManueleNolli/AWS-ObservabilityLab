@@ -1,20 +1,14 @@
-"""Response bodies of the public API."""
-
-from typing import Literal
+"""JSON bodies returned by the API. FastAPI validates responses against them and documents them."""
 
 from pydantic import BaseModel
 
 
-class HealthResponse(BaseModel):
-    status: Literal["ok"] = "ok"
-
-
-class LoginResponse(BaseModel):
-    status: Literal["logged_in"] = "logged_in"
+class StatusResponse(BaseModel):
+    status: str
 
 
 class CheckoutResponse(BaseModel):
-    status: Literal["order_placed"] = "order_placed"
+    status: str
     order_id: str
 
 
