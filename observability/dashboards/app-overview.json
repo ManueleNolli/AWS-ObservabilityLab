@@ -8,7 +8,7 @@
   "editable": true,
   "graphTooltip": 1,
   "schemaVersion": 41,
-  "version": 2,
+  "version": 3,
   "time": {
     "from": "now-30m",
     "to": "now"
@@ -356,9 +356,9 @@
     },
     {
       "id": 5,
-      "type": "stat",
+      "type": "gauge",
       "title": "In flight",
-      "description": "Requests being handled right now, across all routes.",
+      "description": "Requests being handled right now. Prometheus samples this every scrape, so short requests are rarely caught; slow checkouts during a burst are.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -389,9 +389,10 @@
           "fields": "",
           "values": false
         },
-        "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "value"
+        "showThresholdMarkers": true,
+        "showThresholdLabels": false,
+        "minVizHeight": 75,
+        "minVizWidth": 75
       },
       "fieldConfig": {
         "defaults": {
@@ -402,10 +403,20 @@
               {
                 "color": "green",
                 "value": null
+              },
+              {
+                "color": "orange",
+                "value": 4
+              },
+              {
+                "color": "red",
+                "value": 8
               }
             ]
           },
-          "decimals": 0
+          "decimals": 0,
+          "min": 0,
+          "max": 10
         },
         "overrides": []
       }

@@ -1,14 +1,12 @@
 <script setup lang="ts">
 import { LoaderCircle, Zap } from '@lucide/vue'
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 
 import { BURST_SIZES, type BurstProgress } from '@/composables/useActivity'
 
 const props = defineProps<{ burst: BurstProgress }>()
 
 defineEmits<{ fire: [size: number] }>()
-
-const size = ref<number>(BURST_SIZES[0])
 
 const progress = computed(() =>
   props.burst.total === 0 ? 0 : (props.burst.done / props.burst.total) * 100,
@@ -20,7 +18,7 @@ const progress = computed(() =>
     <span class="icon" aria-hidden="true"><Zap :size="18" /></span>
     <div class="text">
       <h3>Random burst</h3>
-      <p>{{ size }} mixed requests over a few seconds, a quick way to fill the dashboards.</p>
+      <p>Mixed requests over a few seconds, a quick way to fill the dashboards.</p>
       <div
         v-if="burst.running"
         class="progress"
@@ -32,28 +30,22 @@ const progress = computed(() =>
         <span :style="{ width: `${progress}%` }" />
       </div>
     </div>
-    <div class="segmented" role="group" aria-label="Burst size">
+    <div class="buttons">
       <button
-        v-for="option in BURST_SIZES"
-        :key="option"
+        v-for="size in BURST_SIZES"
+        :key="size"
         type="button"
-        :aria-pressed="size === option"
+        class="btn btn-primary"
         :disabled="burst.running"
-        @click="size = option"
+        @click="$emit('fire', size)"
       >
-        {{ option }}
+        <template v-if="burst.running && burst.total === size">
+          <LoaderCircle :size="14" class="spin" aria-hidden="true" />
+          {{ burst.done }} / {{ burst.total }}
+        </template>
+        <template v-else>Fire {{ size }}</template>
       </button>
     </div>
-    <button
-      type="button"
-      class="btn btn-primary"
-      :disabled="burst.running"
-      @click="$emit('fire', size)"
-    >
-      <LoaderCircle v-if="burst.running" :size="14" class="spin" aria-hidden="true" />
-      <template v-if="burst.running">{{ burst.done }} / {{ burst.total }}</template>
-      <template v-else>Fire burst</template>
-    </button>
   </article>
 </template>
 
@@ -114,9 +106,14 @@ p {
   transition: width 150ms ease-out;
 }
 
-.btn {
+.buttons {
+  display: flex;
   flex: none;
-  min-width: 112px;
+  gap: 8px;
+}
+
+.btn {
+  min-width: 96px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -127,6 +124,10 @@ p {
 
   .text {
     flex-basis: calc(100% - 54px);
+  }
+
+  .buttons {
+    flex: 1;
   }
 
   .btn {
