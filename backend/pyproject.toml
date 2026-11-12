@@ -3,7 +3,7 @@ name = "observability-lab"
 version = "0.1.0"
 description = "Demo API that turns user clicks into Prometheus metrics and JSON logs."
 authors = [
-    { name = "Manuele Nolli", email = "manuele.nolli.01@gmail.com" }
+    { name = "Manuele Nolli", email = "me@manuelenolli.ch" }
 ]
 requires-python = ">=3.13"
 dependencies = [
