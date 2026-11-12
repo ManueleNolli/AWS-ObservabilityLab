@@ -153,30 +153,6 @@ header p {
   align-items: center;
 }
 
-.segmented {
-  display: inline-flex;
-  padding: 3px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-muted);
-}
-
-.segmented button {
-  height: 28px;
-  padding: 0 12px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-muted);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.segmented button[aria-pressed='true'] {
-  background: var(--surface);
-  box-shadow: var(--shadow);
-  color: var(--text);
-}
-
 .table-wrap {
   max-height: 420px;
   overflow: auto;

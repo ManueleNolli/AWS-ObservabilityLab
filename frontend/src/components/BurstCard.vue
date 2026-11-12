@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { LoaderCircle, Zap } from '@lucide/vue'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
-import { BURST_SIZE, type BurstProgress } from '@/composables/useActivity'
+import { BURST_SIZES, type BurstProgress } from '@/composables/useActivity'
 
 const props = defineProps<{ burst: BurstProgress }>()
 
-defineEmits<{ fire: [] }>()
+defineEmits<{ fire: [size: number] }>()
+
+const size = ref<number>(BURST_SIZES[0])
 
 const progress = computed(() =>
   props.burst.total === 0 ? 0 : (props.burst.done / props.burst.total) * 100,
@@ -18,7 +20,7 @@ const progress = computed(() =>
     <span class="icon" aria-hidden="true"><Zap :size="18" /></span>
     <div class="text">
       <h3>Random burst</h3>
-      <p>{{ BURST_SIZE }} mixed requests over a few seconds, a quick way to fill the dashboards.</p>
+      <p>{{ size }} mixed requests over a few seconds, a quick way to fill the dashboards.</p>
       <div
         v-if="burst.running"
         class="progress"
@@ -30,7 +32,24 @@ const progress = computed(() =>
         <span :style="{ width: `${progress}%` }" />
       </div>
     </div>
-    <button type="button" class="btn btn-primary" :disabled="burst.running" @click="$emit('fire')">
+    <div class="segmented" role="group" aria-label="Burst size">
+      <button
+        v-for="option in BURST_SIZES"
+        :key="option"
+        type="button"
+        :aria-pressed="size === option"
+        :disabled="burst.running"
+        @click="size = option"
+      >
+        {{ option }}
+      </button>
+    </div>
+    <button
+      type="button"
+      class="btn btn-primary"
+      :disabled="burst.running"
+      @click="$emit('fire', size)"
+    >
       <LoaderCircle v-if="burst.running" :size="14" class="spin" aria-hidden="true" />
       <template v-if="burst.running">{{ burst.done }} / {{ burst.total }}</template>
       <template v-else>Fire burst</template>
@@ -101,13 +120,17 @@ p {
   font-variant-numeric: tabular-nums;
 }
 
-@media (width < 560px) {
+@media (width < 640px) {
   .burst {
     flex-wrap: wrap;
   }
 
+  .text {
+    flex-basis: calc(100% - 54px);
+  }
+
   .btn {
-    width: 100%;
+    flex: 1;
   }
 }
 </style>

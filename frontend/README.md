@@ -9,11 +9,16 @@ logs. There is no background traffic, so the dashboards only move when someone u
 | Section | Purpose |
 | --- | --- |
 | Action cards | One per endpoint (Login, Checkout, Search, Trigger error), with sent and failed counts |
-| Random burst | 20 requests to random endpoints, spread over about 3 s, to fill the dashboards quickly |
+| Random burst | 20 or 100 requests to random endpoints, started over about 3 s, to fill the dashboards quickly |
 | Session stats | Requests sent, success rate, errors, and p95 latency as measured in the browser |
 | Latency timeline | The last 60 requests as bars: height is latency, colour is status |
 | Activity log | Every request, filterable, with a copyable request ID |
 | Header | API health indicator, and an optional link to Grafana |
+
+Browsers open at most **6 connections per host** over HTTP/1.1, which is what nginx speaks locally.
+A 100-request burst is therefore queued in the browser: the backend never sees more than 6
+requests in flight, and the latency measured here includes the time spent queued. Behind
+CloudFront (HTTP/2) many requests share one connection, so that limit goes away.
 
 The **request ID** links the frontend to the backend. The backend returns it in the
 `X-Request-ID` header and writes it into its log line. Copy it here, then search for it in the

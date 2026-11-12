@@ -31,7 +31,7 @@ const { records, stats, byEndpoint, burst, run, fireBurst, clear } = useActivity
             @send="run(endpoint)"
           />
         </div>
-        <BurstCard :burst="burst" @fire="fireBurst()" />
+        <BurstCard :burst="burst" @fire="fireBurst" />
       </section>
 
       <section aria-labelledby="session-title">

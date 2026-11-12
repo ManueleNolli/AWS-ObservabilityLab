@@ -7,7 +7,8 @@ import { outcomeOf, percentile, type Outcome } from '@/lib/stats'
 
 /** How many requests the activity log keeps; totals are counted over the whole session. */
 export const MAX_RECORDS = 200
-export const BURST_SIZE = 20
+/** Burst sizes offered in the UI; the first is the default. */
+export const BURST_SIZES = [20, 100] as const
 export const BURST_WINDOW_MS = 3000
 
 export type OutcomeCounts = Record<Outcome, number>
@@ -75,7 +76,10 @@ export function useActivity({ send = sendRequest, wait = sleep }: ActivityOption
   }
 
   /** Fire `size` requests at random endpoints, spread randomly over `windowMs`. */
-  async function fireBurst(size = BURST_SIZE, windowMs = BURST_WINDOW_MS): Promise<void> {
+  async function fireBurst(
+    size: number = BURST_SIZES[0],
+    windowMs = BURST_WINDOW_MS,
+  ): Promise<void> {
     if (burst.running) return
     Object.assign(burst, { running: true, done: 0, total: size })
     try {

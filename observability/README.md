@@ -30,6 +30,7 @@ service.
 
 | Panel | Shows | Built from |
 | --- | --- | --- |
+| Active alerts | Alerts that are pending or firing right now | `ALERTS{alertstate=~"pending\|firing"}` |
 | Request rate | Requests per second | `rate(http_requests_total)` |
 | Error ratio | Share of 5xx responses | 5xx rate ÷ total rate |
 | p95 latency | 95% of requests were faster than this | `histogram_quantile(0.95, …_bucket)` |
@@ -71,8 +72,16 @@ and becomes **firing** once it has stayed true for the `for:` duration.
 | `CheckoutSlow` | Checkout p95 latency is above 2 s | Send many checkouts (latency goes up to 2.5 s) |
 | `LoginFailureSpike` | More than 30% of logins are rejected | Many logins; 20% fail by default, so it needs bad luck |
 
-The thresholds are deliberately low, so a few clicks can trigger them. Locally, you can watch them
-at http://localhost:9090/alerts. Nothing sends notifications yet: there is no Alertmanager.
+The thresholds are deliberately low, so a few clicks can trigger them. Nothing sends notifications
+yet, because there is no Alertmanager. To see alerts:
+- the **Active alerts** panel at the top of the overview dashboard. It reads the `ALERTS` series that
+  Prometheus writes for every pending or firing alert.
+- http://localhost:9090/alerts, Prometheus's own view, which also shows each rule's condition.
+
+Alerts take time: `BackendDown` is pending about 30 s after the backend stops and firing about
+1.5 min after, because it waits for a failed scrape (every 10 s), a rule evaluation (every 10 s)
+and then its `for: 1m`. The rate-based alerts look at the last 5 minutes, so they also take a
+few minutes to clear after the traffic stops.
 
 Every rule filters on `job="backend"`, the scrape job name. Each environment has to use that
 same job name for the rules to match.
