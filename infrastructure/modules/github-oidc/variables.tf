@@ -8,6 +8,16 @@ variable "github_repository" {
   type        = string
 }
 
+variable "github_owner_id" {
+  description = "Numeric ID of the repository owner on GitHub."
+  type        = number
+}
+
+variable "github_repository_id" {
+  description = "Numeric ID of the repository on GitHub."
+  type        = number
+}
+
 variable "state_bucket_arn" {
   description = "ARN of the Terraform state bucket."
   type        = string

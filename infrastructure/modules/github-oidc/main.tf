@@ -6,14 +6,20 @@
 locals {
   github_oidc_host = "token.actions.githubusercontent.com"
 
-  # The token's sub claim says where the workflow runs, e.g. repo:owner/name:ref:refs/heads/main.
+  # The token's sub claim says where the workflow runs, with the owner and repository IDs next to
+  # their names, e.g. repo:owner@123/name@456:ref:refs/heads/main. The IDs stop a deleted repository
+  # recreated under the same name from assuming the roles.
+  github_owner      = split("/", var.github_repository)[0]
+  github_name       = split("/", var.github_repository)[1]
+  github_repository = "repo:${local.github_owner}@${var.github_owner_id}/${local.github_name}@${var.github_repository_id}"
+
   github_subjects = {
     plan = [
-      "repo:${var.github_repository}:pull_request",
-      "repo:${var.github_repository}:ref:refs/heads/main",
+      "${local.github_repository}:pull_request",
+      "${local.github_repository}:ref:refs/heads/main",
     ]
     apply = [
-      "repo:${var.github_repository}:ref:refs/heads/main",
+      "${local.github_repository}:ref:refs/heads/main",
     ]
   }
 }
