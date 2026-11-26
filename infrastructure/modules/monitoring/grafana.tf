@@ -1,4 +1,4 @@
-# Grafana, public at /grafana/ through CloudFront and the ALB. Anonymous visitors are Viewers; nobody
+# Grafana, public at /grafana through CloudFront and the ALB. Anonymous visitors are Viewers; nobody
 # can log in, so nobody can change anything. Data sources and dashboards are provisioned from the
 # image, so Grafana keeps no state worth saving.
 
