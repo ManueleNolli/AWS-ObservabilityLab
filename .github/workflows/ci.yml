@@ -85,3 +85,84 @@ jobs:
             prom/prometheus:v3.8.0 check rules /rules/app-alerts.yml
           docker run --rm -v "$PWD/observability/rules:/rules:ro" -w /rules/tests --entrypoint promtool \
             prom/prometheus:v3.8.0 test rules app-alerts.test.yml
+
+  terraform:
+    name: Terraform (fmt, validate, tflint)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infrastructure
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.14.8
+          terraform_wrapper: false
+
+      - name: Check formatting
+        run: terraform fmt -check -recursive
+
+      - name: Validate
+        run: |
+          for stack in bootstrap main; do
+            terraform -chdir="$stack" init -backend=false -input=false
+            terraform -chdir="$stack" validate
+          done
+
+      - uses: terraform-linters/setup-tflint@v6
+
+      - name: Lint
+        env:
+          # Avoids GitHub API rate limits when tflint downloads the AWS plugin.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          tflint --init --config "$PWD/.tflint.hcl"
+          tflint --recursive --config "$PWD/.tflint.hcl"
+
+  terraform-plan:
+    name: Terraform plan (main stack)
+    needs: terraform
+    # The plan role trusts pull requests and main only. Pull requests from forks get no OIDC token.
+    if: >-
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+      || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: infrastructure/main
+    env:
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      TF_STATE_REGION: ${{ vars.TF_STATE_REGION }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.14.8
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ vars.TF_STATE_REGION }}
+
+      - name: Init
+        run: >-
+          terraform init -input=false
+          -backend-config="bucket=$TF_STATE_BUCKET"
+          -backend-config="region=$TF_STATE_REGION"
+
+      - name: Plan
+        run: |
+          set -o pipefail
+          terraform plan -input=false -no-color -lock-timeout=5m | tee plan.txt
+          {
+            echo '## Terraform plan: main stack'
+            echo '```'
+            cat plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

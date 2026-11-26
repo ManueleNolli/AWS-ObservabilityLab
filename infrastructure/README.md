@@ -132,3 +132,22 @@ GitHub Actions gets short-lived credentials through OIDC; no AWS keys are stored
 Both roles are denied changes to the CI roles, the OIDC provider, the state bucket's settings and
 the bootstrap state. The apply role could still create a new role to get around that; closing the gap
 would need a permissions boundary on every role the main stack creates, which a lab doesn't justify.
+
+### Repository variables
+
+The workflows read the bootstrap outputs from GitHub repository variables (Settings → Secrets and
+variables → Actions → Variables). They aren't secrets. Print them with
+`AWS_PROFILE=observability-lab terraform -chdir=infrastructure/bootstrap output`.
+
+| Variable | Bootstrap output |
+| --- | --- |
+| `AWS_PLAN_ROLE_ARN` | `plan_role_arn` |
+| `AWS_APPLY_ROLE_ARN` | `apply_role_arn` |
+| `TF_STATE_BUCKET` | `state_bucket` |
+| `TF_STATE_REGION` | `state_region` |
+
+### Checks
+
+Every push and pull request runs `terraform fmt`, `validate` for both stacks and `tflint`
+(`.tflint.hcl`). Pull requests and pushes to `main` also run a read-only `terraform plan` of the main
+stack with the plan role; the output is in the run's summary.

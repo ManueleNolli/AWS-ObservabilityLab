@@ -35,7 +35,7 @@ credentials before it can run, and those are what we want Terraform to create.
 - [x] **2. Bootstrap stack:** state bucket, OIDC provider, plan and apply roles
 - [x] **3. Apply the bootstrap and move its state into the bucket it created:** `bootstrap/bootstrap.sh` (and `bootstrap/destroy.sh` to remove it)
 - [x] **4. Main stack skeleton:** S3 backend, `region` and `monitoring_mode` variables, default tags, a guard that fails the plan when managed monitoring isn't available in the region. The budget alert goes in the bootstrap stack, so it keeps watching the account while the main stack is destroyed
-- [ ] **5. CI checks:** `terraform fmt`, `validate` and `tflint` on every PR, plus a read-only `plan`
+- [ ] **5. CI checks:** `terraform fmt`, `validate` and `tflint` on every push and PR, plus a read-only `plan` of the main stack on PRs and `main` (output in the run summary). Needs the repository variables; done once a PR run is green
 - [ ] **6. Deploy and destroy workflows:** manual trigger, `main` only; destroy asks for confirmation
 - [ ] **7. Documentation:** bootstrap, deploy, destroy, switching region
 
