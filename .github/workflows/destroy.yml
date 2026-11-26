@@ -1,0 +1,94 @@
+name: Destroy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type "destroy" to delete every resource in the main stack.
+        required: true
+        type: string
+
+# Deploy and Destroy share the main stack's state: never run two at once, never cancel one halfway.
+concurrency:
+  group: terraform-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  destroy:
+    name: Destroy main stack
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infrastructure/main
+    env:
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      TF_STATE_REGION: ${{ vars.TF_STATE_REGION }}
+    steps:
+      # The apply role only trusts main; say so instead of failing on an AWS error.
+      - name: Check branch and confirmation
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [[ "$GITHUB_REF" != refs/heads/main ]]; then
+            echo "::error::Destroy only runs from main, not ${GITHUB_REF#refs/heads/}."
+            exit 1
+          fi
+          if [[ "$CONFIRM" != destroy ]]; then
+            echo "::error::Type destroy to confirm."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.14.8
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ vars.TF_STATE_REGION }}
+
+      - name: Init
+        run: >-
+          terraform init -input=false
+          -backend-config="bucket=$TF_STATE_BUCKET"
+          -backend-config="region=$TF_STATE_REGION"
+
+      # Destroy where the stack actually is, whatever the defaults say today.
+      - name: Read deployed settings
+        run: |
+          # -json, because -raw prints a warning to stdout when there are no outputs.
+          outputs="$(terraform output -json)"
+          region="$(jq -r '.region.value // empty' <<<"$outputs")"
+          if [[ -z "$region" ]]; then
+            echo "Nothing is deployed." >> "$GITHUB_STEP_SUMMARY"
+            echo "DEPLOYED=false" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          {
+            echo "DEPLOYED=true"
+            echo "TF_VAR_region=$region"
+            echo "TF_VAR_monitoring_mode=$(jq -r '.monitoring_mode.value' <<<"$outputs")"
+          } >> "$GITHUB_ENV"
+
+      - name: Plan
+        if: env.DEPLOYED == 'true'
+        run: |
+          terraform plan -destroy -input=false -lock-timeout=5m -out=tfplan
+          {
+            echo "## Destroy: $TF_VAR_region, $TF_VAR_monitoring_mode"
+            echo '```'
+            terraform show -no-color tfplan
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Applies exactly the plan above.
+      - name: Destroy
+        if: env.DEPLOYED == 'true'
+        run: terraform apply -input=false -lock-timeout=5m tfplan

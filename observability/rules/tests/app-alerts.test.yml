@@ -1,0 +1,59 @@
+# Unit tests for ../app-alerts.yml. Run from this directory: promtool test rules app-alerts.test.yml
+rule_files:
+  - ../app-alerts.yml
+
+evaluation_interval: 15s
+
+tests:
+  - name: backend down fires after one minute
+    interval: 15s
+    input_series:
+      - series: 'up{job="backend", instance="backend:9100"}'
+        values: "0x8"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: BackendDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: backend
+              instance: backend:9100
+            exp_annotations:
+              summary: "Backend target backend:9100 is down"
+              description: "Prometheus could not scrape backend:9100 for 1 minute."
+
+  - name: error ratio above 5% fires
+    interval: 15s
+    input_series:
+      # 10 requests per interval, 1 of which fails: 10% error ratio.
+      - series: 'http_requests_total{job="backend", method="POST", route="/api/login", status="200"}'
+        values: "0+9x40"
+      - series: 'http_requests_total{job="backend", method="POST", route="/api/error", status="500"}'
+        values: "0+1x40"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: HighErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "More than 5% of requests are failing"
+              description: "Server error ratio is 10% over the last 5 minutes."
+
+  - name: healthy traffic fires nothing
+    interval: 15s
+    input_series:
+      - series: 'up{job="backend", instance="backend:9100"}'
+        values: "1x40"
+      - series: 'http_requests_total{job="backend", method="POST", route="/api/login", status="200"}'
+        values: "0+10x40"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: HighErrorRate
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: LoginFailureSpike
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: BackendDown
+        exp_alerts: []

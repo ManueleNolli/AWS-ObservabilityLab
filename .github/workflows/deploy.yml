@@ -1,0 +1,87 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: Region for every resource. To change it on a deployed stack, run Destroy first.
+        type: choice
+        options: [eu-central-2, eu-central-1]
+        default: eu-central-2
+      monitoring_mode:
+        description: managed needs eu-central-1 (Amazon Managed Grafana isn't in Zurich).
+        type: choice
+        options: [self_hosted, managed]
+        default: self_hosted
+
+# Deploy and Destroy share the main stack's state: never run two at once, never cancel one halfway.
+concurrency:
+  group: terraform-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: Deploy main stack
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infrastructure/main
+    env:
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      TF_STATE_REGION: ${{ vars.TF_STATE_REGION }}
+      TF_VAR_region: ${{ inputs.region }}
+      TF_VAR_monitoring_mode: ${{ inputs.monitoring_mode }}
+    steps:
+      # The apply role only trusts main; say so instead of failing on an AWS error.
+      - name: Check branch
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Deploy only runs from main, not ${GITHUB_REF#refs/heads/}."
+          exit 1
+
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.14.8
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ vars.TF_STATE_REGION }}
+
+      - name: Init
+        run: >-
+          terraform init -input=false
+          -backend-config="bucket=$TF_STATE_BUCKET"
+          -backend-config="region=$TF_STATE_REGION"
+
+      # Terraform doesn't move resources between regions: it would create new ones and leave the
+      # old ones running, unmanaged.
+      - name: Check region
+        run: |
+          # -json, because -raw prints a warning to stdout when there are no outputs yet.
+          deployed="$(terraform output -json | jq -r '.region.value // empty')"
+          if [[ -n "$deployed" && "$deployed" != "$TF_VAR_region" ]]; then
+            echo "::error::The stack is deployed in $deployed. Run Destroy before deploying to $TF_VAR_region."
+            exit 1
+          fi
+
+      - name: Plan
+        run: |
+          terraform plan -input=false -lock-timeout=5m -out=tfplan
+          {
+            echo "## Deploy: $TF_VAR_region, $TF_VAR_monitoring_mode"
+            echo '```'
+            terraform show -no-color tfplan
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Applies exactly the plan above.
+      - name: Apply
+        run: terraform apply -input=false -lock-timeout=5m tfplan
