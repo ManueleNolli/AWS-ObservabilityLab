@@ -2,8 +2,7 @@
 # the VPC endpoints live in the private subnets.
 
 locals {
-  vpc_cidr = "10.0.0.0/16"
-  # The first two zones of var.region, so the same code works in every region.
+  # The first two zones of the region, so the same code works in every region.
   azs = slice(data.aws_availability_zones.available.names, 0, 2)
 }
 
@@ -21,14 +20,14 @@ module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "~> 6.9"
 
-  name = var.project
-  cidr = local.vpc_cidr
+  name = var.name
+  cidr = var.cidr
   azs  = local.azs
 
-  # Public /24s (10.0.0.0, 10.0.1.0) for the NAT gateways; private /20s (10.0.16.0, 10.0.32.0) for
-  # everything else.
-  public_subnets  = [for i in range(length(local.azs)) : cidrsubnet(local.vpc_cidr, 8, i)]
-  private_subnets = [for i in range(length(local.azs)) : cidrsubnet(local.vpc_cidr, 4, i + 1)]
+  # Public /24s for the NAT gateways; private /20s for everything else. With 10.0.0.0/16: public
+  # 10.0.0.0 and 10.0.1.0, private 10.0.16.0 and 10.0.32.0.
+  public_subnets  = [for i in range(length(local.azs)) : cidrsubnet(var.cidr, 8, i)]
+  private_subnets = [for i in range(length(local.azs)) : cidrsubnet(var.cidr, 4, i + 1)]
 
   # One NAT gateway per zone: losing a zone doesn't cut the other one off.
   enable_nat_gateway     = true
@@ -54,7 +53,7 @@ module "vpc_endpoints" {
   subnet_ids = module.vpc.private_subnets
 
   create_security_group      = true
-  security_group_name_prefix = "${var.project}-vpc-endpoints-"
+  security_group_name_prefix = "${var.name}-vpc-endpoints-"
   security_group_description = "HTTPS from the VPC to the interface endpoints"
   security_group_rules = {
     ingress_https = {

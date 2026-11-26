@@ -20,3 +20,13 @@ variable "monitoring_mode" {
     error_message = "monitoring_mode must be self_hosted or managed."
   }
 }
+
+variable "image_tag" {
+  description = "Tag of the backend image in ECR: the git SHA it was built from. Deploy sets it."
+  type        = string
+
+  validation {
+    condition     = length(var.image_tag) > 0
+    error_message = "image_tag must not be empty."
+  }
+}

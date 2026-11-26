@@ -13,6 +13,10 @@ on:
         type: choice
         options: [self_hosted, managed]
         default: self_hosted
+      image_tag:
+        description: Backend image tag (a git SHA). Empty deploys the image of the commit this runs on.
+        type: string
+        required: false
 
 # Deploy and Destroy share the main stack's state: never run two at once, never cancel one halfway.
 concurrency:
@@ -35,6 +39,7 @@ jobs:
       TF_STATE_REGION: ${{ vars.TF_STATE_REGION }}
       TF_VAR_region: ${{ inputs.region }}
       TF_VAR_monitoring_mode: ${{ inputs.monitoring_mode }}
+      TF_VAR_image_tag: ${{ inputs.image_tag || github.sha }}
     steps:
       # First: the job's working directory only exists after checkout.
       - uses: actions/checkout@v7
@@ -73,16 +78,28 @@ jobs:
             exit 1
           fi
 
+      # Images come from the separate Build images workflow; deploying doesn't build one.
+      - name: Check image
+        env:
+          ECR_REPOSITORY_PREFIX: ${{ vars.ECR_REPOSITORY_PREFIX }}
+        run: |
+          repository="${ECR_REPOSITORY_PREFIX#*/}/backend"
+          if ! aws ecr describe-images --region "$TF_VAR_region" --repository-name "$repository" \
+            --image-ids "imageTag=$TF_VAR_image_tag" >/dev/null 2>&1; then
+            echo "::error::No $repository:$TF_VAR_image_tag in $TF_VAR_region. Run Build images first."
+            exit 1
+          fi
+
       - name: Plan
         run: |
           terraform plan -input=false -lock-timeout=5m -out=tfplan
           {
-            echo "## Deploy: $TF_VAR_region, $TF_VAR_monitoring_mode"
+            echo "## Deploy: $TF_VAR_region, $TF_VAR_monitoring_mode, backend $TF_VAR_image_tag"
             echo '```'
             terraform show -no-color tfplan
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Applies exactly the plan above.
+      # Applies exactly the plan above, and waits until the backend tasks are healthy.
       - name: Apply
         run: terraform apply -input=false -lock-timeout=5m tfplan
