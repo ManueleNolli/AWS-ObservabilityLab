@@ -1,7 +1,8 @@
 # Lets GitHub Actions exchange its OIDC token for short-lived AWS credentials, so no AWS keys are
-# stored in GitHub. Two roles:
+# stored in GitHub. Three roles:
 #   plan  - read-only, for pull requests and main
 #   apply - deploys and destroys the main stack, from main only
+#   push  - pushes images to ECR, from main only
 
 locals {
   github_oidc_host = "token.actions.githubusercontent.com"
@@ -21,7 +22,19 @@ locals {
     apply = [
       "${local.github_repository}:ref:refs/heads/main",
     ]
+    push = [
+      "${local.github_repository}:ref:refs/heads/main",
+    ]
   }
+
+  github_role_descriptions = {
+    plan  = "run terraform plan on the main stack"
+    apply = "run terraform apply and destroy on the main stack"
+    push  = "push images to ECR"
+  }
+
+  # The roles that run Terraform on the main stack, and get its state.
+  terraform_roles = toset(["plan", "apply"])
 }
 
 resource "aws_iam_openid_connect_provider" "github" {
@@ -58,7 +71,7 @@ resource "aws_iam_role" "github" {
   for_each = local.github_subjects
 
   name                 = "${var.name_prefix}-github-${each.key}"
-  description          = "Assumed by GitHub Actions in ${var.github_repository} to run terraform ${each.key}."
+  description          = "Assumed by GitHub Actions in ${var.github_repository} to ${local.github_role_descriptions[each.key]}."
   assume_role_policy   = data.aws_iam_policy_document.github_trust[each.key].json
   max_session_duration = 3600
 }
@@ -84,10 +97,10 @@ data "aws_iam_policy_document" "main_state" {
 }
 
 resource "aws_iam_role_policy" "main_state" {
-  for_each = aws_iam_role.github
+  for_each = local.terraform_roles
 
   name   = "main-state"
-  role   = each.value.id
+  role   = aws_iam_role.github[each.key].id
   policy = data.aws_iam_policy_document.main_state.json
 }
 
@@ -99,7 +112,7 @@ resource "aws_iam_role_policy_attachment" "plan_read_only" {
 
 # Apply manages everything in the main stack, which includes IAM roles for ECS. A lab doesn't justify
 # a hand-maintained least-privilege policy, so it gets AdministratorAccess, minus the resources
-# below: CI can't change its own roles, the OIDC provider or the state bucket.
+# below: CI can't change its own roles, the OIDC provider, the state bucket or the registry.
 resource "aws_iam_role_policy_attachment" "apply_admin" {
   role       = aws_iam_role.github["apply"].name
   policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
@@ -131,12 +144,71 @@ data "aws_iam_policy_document" "protect_bootstrap" {
     actions   = ["s3:*"]
     resources = ["${var.state_bucket_arn}/${var.protected_state_prefix}*"]
   }
+
+  # Reading and pulling stay allowed. Any region: replicas are covered too.
+  statement {
+    sid    = "DenyChangingRepositories"
+    effect = "Deny"
+    not_actions = [
+      "ecr:Describe*",
+      "ecr:List*",
+      "ecr:Get*",
+      "ecr:BatchGetImage",
+      "ecr:BatchCheckLayerAvailability",
+    ]
+    resources = [
+      for arn in var.ecr_repository_arns :
+      "arn:aws:ecr:*:${split(":", arn)[4]}:${split(":", arn)[5]}"
+    ]
+  }
+
+  # Registry-wide settings the bootstrap owns; the main stack never needs to change them.
+  statement {
+    sid    = "DenyChangingRegistry"
+    effect = "Deny"
+    actions = [
+      "ecr:PutReplicationConfiguration",
+      "ecr:CreateRepositoryCreationTemplate",
+      "ecr:UpdateRepositoryCreationTemplate",
+      "ecr:DeleteRepositoryCreationTemplate",
+    ]
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_role_policy" "protect_bootstrap" {
-  for_each = aws_iam_role.github
+  for_each = local.terraform_roles
 
   name   = "protect-bootstrap"
-  role   = each.value.id
+  role   = aws_iam_role.github[each.key].id
   policy = data.aws_iam_policy_document.protect_bootstrap.json
+}
+
+# Push: log in to ECR and push to the lab's repositories, nothing else. ECR copies the images to the
+# replica region itself.
+data "aws_iam_policy_document" "push" {
+  statement {
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"]
+  }
+
+  statement {
+    actions = [
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:BatchGetImage",
+      "ecr:CompleteLayerUpload",
+      "ecr:DescribeImages",
+      "ecr:GetDownloadUrlForLayer",
+      "ecr:InitiateLayerUpload",
+      "ecr:PutImage",
+      "ecr:UploadLayerPart",
+    ]
+    resources = var.ecr_repository_arns
+  }
+}
+
+resource "aws_iam_role_policy" "push" {
+  name   = "ecr-push"
+  role   = aws_iam_role.github["push"].id
+  policy = data.aws_iam_policy_document.push.json
 }

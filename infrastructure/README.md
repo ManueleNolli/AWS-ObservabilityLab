@@ -7,8 +7,8 @@ in the console. The only manual work is logging in and running one script once p
 
 | Path | Contents |
 | --- | --- |
-| `bootstrap/` | What has to exist before anything else: the state bucket, the GitHub OIDC provider, the CI roles and a budget alert. Applied from your laptop |
-| `main/` | The lab itself: ECR, network, ALB, Fargate, S3, CloudFront, monitoring. Applied by CI, destroyed when not in use |
+| `bootstrap/` | What has to exist before anything else: the state bucket, the GitHub OIDC provider, the CI roles, the ECR repositories and a budget alert. Applied from your laptop |
+| `main/` | The lab itself: network, ALB, Fargate, S3, CloudFront, monitoring. Applied by CI, destroyed when not in use |
 | `modules/` | Building blocks used by the stacks |
 
 ## Why two stacks
@@ -34,6 +34,9 @@ bucket, then moves its own state into it. From then on both stacks keep their st
 | Domain | None: the default `*.cloudfront.net` URL | Only needed to check that everything works |
 | Lifecycle | The main stack is destroyed when not in use; the bootstrap stays | The bootstrap costs cents; Fargate, the ALB and CloudFront don't |
 | Budget | In the bootstrap stack, not the main one | It keeps watching the account while the main stack is destroyed, or half-destroyed |
+| Images | ECR in the bootstrap stack, built by a separate manual workflow | Images survive a destroy, and a deploy never waits for a build |
+| Image tags | The git commit SHA, immutable; the last 10 images are kept | Every deploy points at exactly one commit |
+| Image region | Replicated from the bootstrap region to `eu-central-1` | `managed` mode deploys to Frankfurt and pulls from its own region |
 
 ## Prerequisites
 
@@ -93,7 +96,8 @@ Set them in `bootstrap/terraform.tfvars` or as `TF_VAR_<name>`.
 | --- | --- | --- |
 | `budget_email` | (required) | Receives the budget alerts |
 | `budget_limit_usd` | `20` | Monthly limit for the whole account |
-| `region` | `eu-central-2` | Region of the state bucket |
+| `region` | `eu-central-2` | Region of the state bucket and the ECR repositories |
+| `ecr_replica_region` | `eu-central-1` | Region the images are replicated to. Must differ from `region` |
 | `project` | `observability-lab` | Name prefix; the bucket is `<project>-tfstate-<account-id>` |
 | `github_repository` | `ManueleNolli/AWS-ObservabilityLab` | Repository the CI roles trust. Set it to your fork's `owner/name` |
 
@@ -109,9 +113,19 @@ AWS_PROFILE=observability-lab ./infrastructure/bootstrap/destroy.sh
 ```
 
 Refuses while the main stack still has state in the bucket. Otherwise it asks you to type the bucket
-name, moves the state back to a local file, destroys the roles, the OIDC provider and the budget, then
-empties and deletes the bucket. The bucket has `prevent_destroy`, so a plain `terraform destroy`
+name, moves the state back to a local file, destroys the roles, the OIDC provider, the budget and the
+ECR repositories with their images, deletes the replica repositories (ECR creates them itself, so
+Terraform doesn't manage them), then empties and deletes the bucket. The bucket has `prevent_destroy`, so a plain `terraform destroy`
 can't remove it.
+
+## Images
+
+The **Build images** workflow (Actions → Build images → Run workflow) builds the backend image on an
+ARM runner and pushes it to ECR as `<project>/backend:<commit SHA>`. Like Deploy, it only runs from
+`main`. If the commit already has an image, it skips the push. ECR copies each image to the replica
+region; the copies get the same settings through a repository creation template.
+
+The frontend has no image: it's served from S3 as static files.
 
 ## Main stack
 
@@ -160,9 +174,11 @@ GitHub Actions gets short-lived credentials through OIDC; no AWS keys are stored
 | --- | --- | --- |
 | `<project>-github-plan` | Pull requests and `main` | Read-only, plus the main stack's state |
 | `<project>-github-apply` | `main` only | Admin, plus the main stack's state |
+| `<project>-github-push` | `main` only | Push to the ECR repositories |
 
-Both roles are denied changes to the CI roles, the OIDC provider, the state bucket's settings and
-the bootstrap state. The apply role could still create a new role to get around that; closing the gap
+The plan and apply roles are denied changes to the CI roles, the OIDC provider, the state bucket's
+settings, the bootstrap state, the ECR repositories (in every region) and the registry's replication
+settings. The apply role could still create a new role to get around that; closing the gap
 would need a permissions boundary on every role the main stack creates, which a lab doesn't justify.
 
 ### Repository variables
@@ -175,6 +191,8 @@ variables → Actions → Variables). They aren't secrets. Print them with
 | --- | --- |
 | `AWS_PLAN_ROLE_ARN` | `plan_role_arn` |
 | `AWS_APPLY_ROLE_ARN` | `apply_role_arn` |
+| `AWS_PUSH_ROLE_ARN` | `push_role_arn` |
+| `ECR_REPOSITORY_PREFIX` | `ecr_repository_prefix` |
 | `TF_STATE_BUCKET` | `state_bucket` |
 | `TF_STATE_REGION` | `state_region` |
 
