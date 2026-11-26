@@ -37,6 +37,9 @@ bucket, then moves its own state into it. From then on both stacks keep their st
 | Images | ECR in the bootstrap stack, built by a separate manual workflow | Images survive a destroy, and a deploy never waits for a build |
 | Image tags | The git commit SHA, immutable; the last 10 images are kept | Every deploy points at exactly one commit |
 | Image region | Replicated from the bootstrap region to `eu-central-1` | `managed` mode deploys to Frankfurt and pulls from its own region |
+| Network | `terraform-aws-modules/vpc`, 2 zones, a NAT gateway per zone; only the NAT gateways are in public subnets | Close to a production layout: nothing but CloudFront reaches the app |
+| AWS traffic | S3 gateway endpoint and ECR and CloudWatch Logs interface endpoints | Image pulls and logs stay inside the VPC instead of going through the NAT gateways |
+| Flow logs | All traffic, to CloudWatch Logs, kept 7 days | Shows what talks to what, e.g. tasks reaching ECR through the endpoints |
 
 ## Prerequisites
 
@@ -145,6 +148,18 @@ between regions; it would create new ones and leave the old ones running, unmana
 
 There's no approval step beyond the typed confirmation: a GitHub Environment would change the OIDC
 subject to `…:environment:<name>`, which the apply role doesn't trust.
+
+### Network
+
+| | CIDR | Holds |
+| --- | --- | --- |
+| VPC | `10.0.0.0/16` | |
+| Public subnets | `10.0.0.0/24`, `10.0.1.0/24` | The NAT gateways |
+| Private subnets | `10.0.16.0/20`, `10.0.32.0/20` | The ALB, the Fargate tasks, the interface endpoints |
+
+The zones are the first two of the region, looked up at plan time. Flow logs go to the
+`/aws/vpc-flow-log/<vpc-id>` log group. The NAT gateways and interface endpoints are billed by the
+hour, which is most of the stack's cost while it's deployed.
 
 ### Running it locally
 
