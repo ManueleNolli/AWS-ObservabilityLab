@@ -14,7 +14,7 @@ on:
         options: [self_hosted, managed]
         default: self_hosted
       image_tag:
-        description: Image tag (a git SHA). Empty deploys the images of the commit this runs on.
+        description: Image tag (a git SHA) to deploy instead of building the current commit's images.
         type: string
         required: false
 
@@ -28,8 +28,21 @@ permissions:
   id-token: write
 
 jobs:
+  # Builds whatever images the commit doesn't have yet; images that exist are skipped in seconds.
+  # Not with an explicit image_tag: an older tag can't be rebuilt from this commit.
+  build:
+    name: Build images
+    if: inputs.image_tag == ''
+    uses: ./.github/workflows/build-images.yml
+    permissions:
+      contents: read
+      id-token: write
+
   deploy:
     name: Deploy main stack
+    needs: build
+    # Also when build was skipped because of an explicit image_tag, but not when it failed.
+    if: ${{ !cancelled() && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -78,7 +91,8 @@ jobs:
             exit 1
           fi
 
-      # Images come from the separate Build images workflow; deploying doesn't build any.
+      # Needed for an explicit image_tag, and in the replica region, where ECR copies new images
+      # within a few minutes: wait for them instead of failing.
       - name: Check images
         env:
           ECR_REPOSITORY_PREFIX: ${{ vars.ECR_REPOSITORY_PREFIX }}
@@ -87,19 +101,26 @@ jobs:
           if [[ "$TF_VAR_monitoring_mode" == self_hosted ]]; then
             images+=(prometheus loki grafana fluent-bit)
           fi
-          missing=0
-          for image in "${images[@]}"; do
-            repository="${ECR_REPOSITORY_PREFIX#*/}/$image"
-            if ! aws ecr describe-images --region "$TF_VAR_region" --repository-name "$repository" \
-              --image-ids "imageTag=$TF_VAR_image_tag" >/dev/null 2>&1; then
-              echo "::error::No $repository:$TF_VAR_image_tag in $TF_VAR_region."
-              missing=1
+          # ECR lives in the state bucket's region; anywhere else the images are replicas.
+          attempts=1
+          [[ "$TF_VAR_region" != "$TF_STATE_REGION" ]] && attempts=20
+          for attempt in $(seq "$attempts"); do
+            missing=()
+            for image in "${images[@]}"; do
+              repository="${ECR_REPOSITORY_PREFIX#*/}/$image"
+              if ! aws ecr describe-images --region "$TF_VAR_region" --repository-name "$repository" \
+                --image-ids "imageTag=$TF_VAR_image_tag" >/dev/null 2>&1; then
+                missing+=("$repository:$TF_VAR_image_tag")
+              fi
+            done
+            (( ${#missing[@]} == 0 )) && exit 0
+            if (( attempt < attempts )); then
+              echo "Waiting for ${missing[*]} in $TF_VAR_region ($attempt/$attempts)"
+              sleep 15
             fi
           done
-          if (( missing )); then
-            echo "::error::Run Build images first."
-            exit 1
-          fi
+          echo "::error::Not in ECR in $TF_VAR_region: ${missing[*]}."
+          exit 1
 
       - name: Plan
         run: |
