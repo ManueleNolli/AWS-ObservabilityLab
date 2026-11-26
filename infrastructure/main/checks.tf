@@ -1,4 +1,6 @@
 # Fails the plan, instead of half an apply, when managed monitoring isn't available in var.region.
+# Nothing reads it: the postcondition is the point.
+# tflint-ignore: terraform_unused_declarations
 data "aws_ssm_parameters_by_path" "managed_monitoring_regions" {
   for_each = var.monitoring_mode == "managed" ? toset(["grafana", "aps"]) : toset([])
   provider = aws.global_infrastructure
