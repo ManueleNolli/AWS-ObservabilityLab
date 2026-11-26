@@ -50,6 +50,8 @@ locals {
     image             = var.log_router.image
     essential         = true
     memoryReservation = 50
+    # ECS runs FireLens routers as root and writes this back; stating it avoids a diff on every plan.
+    user = "0"
 
     firelensConfiguration = {
       type = "fluentbit"

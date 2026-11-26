@@ -24,7 +24,7 @@ output "url" {
 
 output "grafana_url" {
   description = "Grafana's URL, in self_hosted mode."
-  value       = local.self_hosted ? "${module.cdn.url}/grafana/" : null
+  value       = local.self_hosted ? "${module.cdn.url}/grafana" : null
 }
 
 output "frontend_bucket" {

@@ -200,7 +200,7 @@ hour, which is most of the stack's cost while it's deployed.
 | Backend | 2, one per zone | 0.25 vCPU / 0.5 GB + Fluent Bit sidecar | `/api/*` through CloudFront; metrics on `backend.observability.internal:9100` |
 | Prometheus | 1 | 0.5 vCPU / 1 GB | `prometheus.observability.internal:9090`, from Grafana only |
 | Loki | 1 | 0.5 vCPU / 1 GB | `loki.observability.internal:3100`, from Grafana and Fluent Bit |
-| Grafana | 1 | 0.25 vCPU / 0.5 GB | `/grafana/` through CloudFront |
+| Grafana | 1 | 0.25 vCPU / 0.5 GB | `/grafana` through CloudFront |
 
 The monitoring services only exist in `self_hosted` mode. In `managed` mode the backend logs to
 CloudWatch only, and CloudFront serves `/api/*` alone.
