@@ -76,6 +76,7 @@ jobs:
             echo "DEPLOYED=true"
             echo "TF_VAR_region=$region"
             echo "TF_VAR_monitoring_mode=$(jq -r '.monitoring_mode.value' <<<"$outputs")"
+            echo "TF_VAR_image_tag=$(jq -r '.image_tag.value' <<<"$outputs")"
           } >> "$GITHUB_ENV"
 
       - name: Plan
