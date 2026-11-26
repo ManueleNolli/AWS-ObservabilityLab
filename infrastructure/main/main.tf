@@ -80,7 +80,8 @@ module "cdn" {
   alb_arn               = module.backend.alb_arn
   alb_dns_name          = module.backend.alb_dns_name
   alb_security_group_id = module.backend.alb_security_group_id
-  alb_path_patterns     = local.self_hosted ? ["/api/*", "/grafana/*"] : ["/api/*"]
+  # /grafana on its own too: Grafana redirects it to /grafana/.
+  alb_path_patterns = local.self_hosted ? ["/api/*", "/grafana", "/grafana/*"] : ["/api/*"]
 }
 
 module "monitoring" {

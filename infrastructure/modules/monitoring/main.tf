@@ -64,7 +64,7 @@ resource "aws_vpc_security_group_ingress_rule" "self" {
 # Fluent Bit, in the backend tasks, pushes the backend's logs.
 resource "aws_vpc_security_group_ingress_rule" "loki_from_backend" {
   security_group_id            = aws_security_group.this.id
-  description                  = "Loki from the backend's log router"
+  description                  = "Loki from the backend log router"
   referenced_security_group_id = var.backend_security_group_id
   ip_protocol                  = "tcp"
   from_port                    = local.ports.loki
