@@ -2,6 +2,8 @@ name: Build images
 
 on:
   workflow_dispatch:
+  # Deploy runs it first, so a deploy never waits on a manual build.
+  workflow_call:
 
 permissions:
   contents: read
@@ -72,6 +74,9 @@ jobs:
           file: ${{ matrix.dockerfile }}
           platforms: linux/arm64
           push: true
+          # A plain image under the tag: no index with an untagged attestation next to it, so ECR's
+          # "keep the last 10" counts deployable images only.
+          provenance: false
           tags: ${{ env.IMAGE }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
