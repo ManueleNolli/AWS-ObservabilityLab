@@ -115,7 +115,26 @@ can't remove it.
 
 ## Main stack
 
-Locally, initialise it against the bucket created by the bootstrap:
+### Deploy and destroy
+
+Both are GitHub Actions workflows started by hand (Actions → workflow → Run workflow) and only run
+from `main`. They plan, write the plan to the run summary, then apply exactly that plan. They share a
+concurrency group, so they never run at the same time.
+
+| Workflow | Inputs | Notes |
+| --- | --- | --- |
+| **Deploy** | `region`, `monitoring_mode` | Refuses a region other than the one the stack is deployed in |
+| **Destroy** | `confirm`: type `destroy` | Reads the region and mode from the state, so it always targets what is deployed |
+
+To change region: run Destroy, then Deploy with the new region. Terraform doesn't move resources
+between regions; it would create new ones and leave the old ones running, unmanaged.
+
+There's no approval step beyond the typed confirmation: a GitHub Environment would change the OIDC
+subject to `…:environment:<name>`, which the apply role doesn't trust.
+
+### Running it locally
+
+Initialise it against the bucket created by the bootstrap:
 
 ```bash
 AWS_PROFILE=observability-lab terraform -chdir=infrastructure/main init \
@@ -131,7 +150,7 @@ AWS_PROFILE=observability-lab terraform -chdir=infrastructure/main init \
 
 Amazon Managed Grafana isn't available in Zurich. With `monitoring_mode = "managed"`, set `region` to
 a region that has it, e.g. `eu-central-1` (Frankfurt); otherwise the plan fails and lists the
-supported regions. Destroy the stack before changing `region`: switching recreates everything.
+supported regions.
 
 ## CI access
 
