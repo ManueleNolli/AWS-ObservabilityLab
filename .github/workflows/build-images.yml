@@ -1,0 +1,60 @@
+name: Build images
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  backend:
+    name: Build and push backend
+    # Fargate runs on ARM64: build natively instead of emulating.
+    runs-on: ubuntu-24.04-arm
+    env:
+      IMAGE: ${{ vars.ECR_REPOSITORY_PREFIX }}/backend:${{ github.sha }}
+    steps:
+      # The push role only trusts main; say so instead of failing on an AWS error.
+      - name: Check branch
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Build images only runs from main, not ${GITHUB_REF#refs/heads/}."
+          exit 1
+
+      - uses: actions/checkout@v7
+
+      # ECR lives in the bootstrap stack, next to the state bucket.
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_PUSH_ROLE_ARN }}
+          aws-region: ${{ vars.TF_STATE_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      # Tags are immutable: pushing the same commit again would fail.
+      - name: Check for an existing image
+        run: |
+          repository="${IMAGE#*/}"
+          if aws ecr describe-images --repository-name "${repository%:*}" \
+            --image-ids "imageTag=${GITHUB_SHA}" >/dev/null 2>&1; then
+            echo "EXISTS=true" >> "$GITHUB_ENV"
+            echo "$IMAGE already exists, nothing to push." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: docker/setup-buildx-action@v4
+        if: env.EXISTS != 'true'
+
+      - uses: docker/build-push-action@v7
+        if: env.EXISTS != 'true'
+        with:
+          context: backend
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.IMAGE }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Summary
+        if: env.EXISTS != 'true'
+        run: echo "Pushed $IMAGE" >> "$GITHUB_STEP_SUMMARY"

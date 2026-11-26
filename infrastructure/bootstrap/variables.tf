@@ -1,5 +1,5 @@
 variable "region" {
-  description = "Region of the state bucket. Independent of the region the main stack deploys to."
+  description = "Region of the state bucket and the ECR repositories. Independent of the region the main stack deploys to."
   type        = string
   default     = "eu-central-2"
 }
@@ -25,4 +25,15 @@ variable "budget_limit_usd" {
 variable "budget_email" {
   description = "Address for budget alerts. Not committed: copy terraform.tfvars.example to terraform.tfvars (gitignored), or set TF_VAR_budget_email."
   type        = string
+}
+
+variable "ecr_replica_region" {
+  description = "Region the ECR repositories are replicated to: where managed mode deploys."
+  type        = string
+  default     = "eu-central-1"
+
+  validation {
+    condition     = var.ecr_replica_region != var.region
+    error_message = "ecr_replica_region must differ from region."
+  }
 }

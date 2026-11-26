@@ -1,12 +1,26 @@
+locals {
+  default_tags = {
+    Project   = var.project
+    Stack     = "bootstrap"
+    ManagedBy = "terraform"
+  }
+}
+
 provider "aws" {
   region = var.region
 
   default_tags {
-    tags = {
-      Project   = var.project
-      Stack     = "bootstrap"
-      ManagedBy = "terraform"
-    }
+    tags = local.default_tags
+  }
+}
+
+# Region the images are replicated to, e.g. for a main stack deployed in Frankfurt.
+provider "aws" {
+  alias  = "replica"
+  region = var.ecr_replica_region
+
+  default_tags {
+    tags = local.default_tags
   }
 }
 
@@ -36,6 +50,17 @@ locals {
   github_repository = jsondecode(data.http.github_repository.response_body)
 }
 
+module "ecr" {
+  source = "../modules/ecr"
+  providers = {
+    aws.replica = aws.replica
+  }
+
+  name_prefix    = var.project
+  repositories   = ["backend"]
+  replica_region = var.ecr_replica_region
+}
+
 # Each stack keeps its state under its own prefix; CI only gets access to main/.
 module "github_oidc" {
   source = "../modules/github-oidc"
@@ -47,6 +72,7 @@ module "github_oidc" {
   state_bucket_arn       = module.state_bucket.arn
   ci_state_prefix        = "main/"
   protected_state_prefix = "bootstrap/"
+  ecr_repository_arns    = module.ecr.repository_arns
 }
 
 # Lives here, not in the main stack, so it keeps watching the account while the main stack is destroyed.

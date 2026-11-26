@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# Removes the bootstrap stack from the AWS account you're logged into: CI roles, OIDC provider and the
-# state bucket with every version in it. Refuses while the main stack still has state in the bucket.
+# Removes the bootstrap stack from the AWS account you're logged into: CI roles, OIDC provider, budget,
+# ECR repositories with their replicas, and the state bucket with every version in it. Refuses while
+# the main stack still has state in the bucket.
 #
 # Usage: AWS_PROFILE=<profile> ./destroy.sh
-# Optional: TF_VAR_region, TF_VAR_project (defaults in variables.tf).
+# Optional: TF_VAR_region, TF_VAR_project, TF_VAR_ecr_replica_region (defaults in variables.tf).
 set -euo pipefail
 cd "$(dirname "$0")"
 
 region="${TF_VAR_region:-eu-central-2}"
 project="${TF_VAR_project:-observability-lab}"
+replica_region="${TF_VAR_ecr_replica_region:-eu-central-1}"
 
 account_id="$(aws sts get-caller-identity --query Account --output text)"
 bucket="${project}-tfstate-${account_id}"
@@ -22,7 +24,7 @@ if [[ "$main_objects" != "0" ]]; then
   exit 1
 fi
 
-read -rp "This permanently deletes the CI roles, the OIDC provider and ${bucket}. Type the bucket name to continue: " answer
+read -rp "This permanently deletes the CI roles, the OIDC provider, every image in ECR and ${bucket}. Type the bucket name to continue: " answer
 [[ "$answer" == "$bucket" ]] || { echo "Aborted."; exit 1; }
 
 # The bucket holding the state is about to be deleted, so bring the state back to a local file.
@@ -34,6 +36,15 @@ terraform init -migrate-state -force-copy -input=false
 # prevent_destroy stops terraform from deleting the bucket, so it leaves the state and is deleted below.
 terraform state rm module.state_bucket
 terraform destroy
+
+# ECR created the replicas itself, so Terraform doesn't know them. Replication is gone by now, so
+# nothing recreates them.
+replicas="$(aws ecr describe-repositories --region "$replica_region" --output text \
+  --query "repositories[?starts_with(repositoryName, '${project}/')].repositoryName")"
+for repository in $replicas; do
+  echo "Deleting replica ${repository} (${replica_region})"
+  aws ecr delete-repository --repository-name "$repository" --region "$replica_region" --force >/dev/null
+done
 
 echo "Emptying and deleting ${bucket}"
 versions="$(aws s3api list-object-versions --bucket "$bucket" --region "$region" --output json \

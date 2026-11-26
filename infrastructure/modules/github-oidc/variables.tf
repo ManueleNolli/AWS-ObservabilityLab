@@ -32,3 +32,8 @@ variable "protected_state_prefix" {
   description = "State key prefix the roles may not touch at all, with a trailing slash."
   type        = string
 }
+
+variable "ecr_repository_arns" {
+  description = "ECR repositories the push role pushes to, and the other roles may not change."
+  type        = list(string)
+}
