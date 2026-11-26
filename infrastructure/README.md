@@ -22,6 +22,19 @@ bucket, then moves its own state into it. From then on both stacks keep their st
 | bootstrap | `bootstrap/terraform.tfstate` | You, with `bootstrap/bootstrap.sh` |
 | main | `main/terraform.tfstate` | GitHub Actions, through the CI roles |
 
+## Design decisions
+
+| Topic | Decision | Why |
+| --- | --- | --- |
+| Credentials | IAM Identity Center locally, GitHub OIDC in CI; no long-lived access keys anywhere | Short-lived credentials only |
+| CI permissions | The CI roles are owned by the bootstrap stack, which only you apply | CI can't widen its own permissions |
+| Deploying | The main stack is deployed and destroyed by manually triggered workflows, from `main` only | Nothing reaches AWS without a deliberate action on reviewed code |
+| Environments | One | It's a lab |
+| Region | One `region` variable for every resource, default `eu-central-2` (Zurich) | Managed Grafana isn't in Zurich, so `managed` mode runs in `eu-central-1` (Frankfurt) |
+| Domain | None: the default `*.cloudfront.net` URL | Only needed to check that everything works |
+| Lifecycle | The main stack is destroyed when not in use; the bootstrap stays | The bootstrap costs cents; Fargate, the ALB and CloudFront don't |
+| Budget | In the bootstrap stack, not the main one | It keeps watching the account while the main stack is destroyed, or half-destroyed |
+
 ## Prerequisites
 
 | Tool | Why |
