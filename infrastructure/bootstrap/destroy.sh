@@ -18,9 +18,17 @@ backend_config=(-backend-config="bucket=${bucket}" -backend-config="region=${reg
 
 echo "Account ${account_id}, state bucket ${bucket} (${region})"
 
-main_objects="$(aws s3api list-objects-v2 --bucket "$bucket" --region "$region" --prefix main/ --query "length(Contents || \`[]\`)")"
-if [[ "$main_objects" != "0" ]]; then
-  echo "The main stack still has state in the bucket: destroy it first." >&2
+# Destroy leaves the main stack's state file behind, empty: check for resources, not for the file.
+if aws s3api head-object --bucket "$bucket" --region "$region" --key main/terraform.tfstate.tflock >/dev/null 2>&1; then
+  echo "The main stack's state is locked: a Deploy or Destroy is running. Wait for it." >&2
+  exit 1
+fi
+main_resources=0
+if main_state="$(aws s3 cp "s3://${bucket}/main/terraform.tfstate" - --region "$region" 2>/dev/null)"; then
+  main_resources="$(jq '.resources | length' <<<"$main_state")"
+fi
+if [[ "$main_resources" != "0" ]]; then
+  echo "The main stack still has ${main_resources} resources: run the Destroy workflow first." >&2
   exit 1
 fi
 
@@ -47,6 +55,7 @@ for repository in $replicas; do
 done
 
 echo "Emptying and deleting ${bucket}"
+# shellcheck disable=SC2016 # backticks are JMESPath literals, not shell
 versions="$(aws s3api list-object-versions --bucket "$bucket" --region "$region" --output json \
   --query '{Objects: [Versions, DeleteMarkers][][].{Key: Key, VersionId: VersionId}, Quiet: `true`}')"
 if [[ "$(jq '.Objects | length' <<<"$versions")" != "0" ]]; then
