@@ -1,0 +1,19 @@
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  # Cloud Map returns one A record per running backend task, so each task is scraped on its own.
+  - job_name: backend
+    dns_sd_configs:
+      - names: ["backend.observability.internal"]
+        type: A
+        port: 9100
+        refresh_interval: 30s
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

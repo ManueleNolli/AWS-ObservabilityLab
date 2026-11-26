@@ -8,12 +8,32 @@ permissions:
   id-token: write
 
 jobs:
-  backend:
-    name: Build and push backend
+  build:
+    name: Build and push ${{ matrix.image }}
     # Fargate runs on ARM64: build natively instead of emulating.
     runs-on: ubuntu-24.04-arm
+    strategy:
+      matrix:
+        include:
+          - image: backend
+            context: backend
+            dockerfile: backend/Dockerfile
+          # The monitoring images copy the shared rules and dashboards from observability/, so they
+          # build from the repository root.
+          - image: prometheus
+            context: .
+            dockerfile: infrastructure/images/prometheus/Dockerfile
+          - image: loki
+            context: infrastructure/images/loki
+            dockerfile: infrastructure/images/loki/Dockerfile
+          - image: grafana
+            context: .
+            dockerfile: infrastructure/images/grafana/Dockerfile
+          - image: fluent-bit
+            context: infrastructure/images/fluent-bit
+            dockerfile: infrastructure/images/fluent-bit/Dockerfile
     env:
-      IMAGE: ${{ vars.ECR_REPOSITORY_PREFIX }}/backend:${{ github.sha }}
+      IMAGE: ${{ vars.ECR_REPOSITORY_PREFIX }}/${{ matrix.image }}:${{ github.sha }}
     steps:
       # The push role only trusts main; say so instead of failing on an AWS error.
       - name: Check branch
@@ -48,12 +68,13 @@ jobs:
       - uses: docker/build-push-action@v7
         if: env.EXISTS != 'true'
         with:
-          context: backend
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           platforms: linux/arm64
           push: true
           tags: ${{ env.IMAGE }}
-          cache-from: type=gha,scope=backend
-          cache-to: type=gha,mode=max,scope=backend
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
 
       - name: Summary
         if: env.EXISTS != 'true'

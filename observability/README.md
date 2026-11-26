@@ -5,7 +5,7 @@ rules, stored as code. The same files are loaded locally (docker compose), in `s
 mode and in `managed` mode, so a dashboard looks the same everywhere.
 
 Config for a single environment, such as data source URLs, scrape targets and Loki, lives
-elsewhere: `local/` for docker compose, and later the Terraform modules for AWS.
+elsewhere: `local/` for docker compose, `infrastructure/images/` for `self_hosted` mode on AWS.
 
 ```
 observability/
