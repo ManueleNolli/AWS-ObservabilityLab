@@ -29,3 +29,12 @@ module "github_oidc" {
   ci_state_prefix        = "main/"
   protected_state_prefix = "bootstrap/"
 }
+
+# Lives here, not in the main stack, so it keeps watching the account while the main stack is destroyed.
+module "budget" {
+  source = "../modules/budget"
+
+  name      = "${var.project}-monthly"
+  limit_usd = var.budget_limit_usd
+  email     = var.budget_email
+}

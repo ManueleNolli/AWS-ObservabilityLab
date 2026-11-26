@@ -62,6 +62,7 @@ request". The request ID ties the two together: the frontend shows it, the backe
 | `frontend/` | Vue single-page app | [frontend/README.md](frontend/README.md) |
 | `observability/` | Grafana dashboards and Prometheus alert rules, shared by every environment | [observability/README.md](observability/README.md) |
 | `local/` | Config for the local Docker Compose stack only (nginx, Prometheus, Loki, Alloy, Grafana provisioning) | |
+| `infrastructure/` | Terraform for AWS: the bootstrap stack and the main stack | [infrastructure/README.md](infrastructure/README.md) |
 
 ## Run locally
 
