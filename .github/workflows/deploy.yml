@@ -36,14 +36,15 @@ jobs:
       TF_VAR_region: ${{ inputs.region }}
       TF_VAR_monitoring_mode: ${{ inputs.monitoring_mode }}
     steps:
+      # First: the job's working directory only exists after checkout.
+      - uses: actions/checkout@v7
+
       # The apply role only trusts main; say so instead of failing on an AWS error.
       - name: Check branch
         if: github.ref != 'refs/heads/main'
         run: |
           echo "::error::Deploy only runs from main, not ${GITHUB_REF#refs/heads/}."
           exit 1
-
-      - uses: actions/checkout@v7
 
       - uses: hashicorp/setup-terraform@v4
         with:
