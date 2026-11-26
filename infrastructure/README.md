@@ -10,6 +10,7 @@ in the console. The only manual work is logging in and running one script once p
 | `bootstrap/` | What has to exist before anything else: the state bucket, the GitHub OIDC provider, the CI roles, the ECR repositories and a budget alert. Applied from your laptop |
 | `main/` | The lab itself: network, ALB, Fargate, S3, CloudFront, monitoring. Applied by CI, destroyed when not in use |
 | `modules/` | Building blocks used by the stacks |
+| `images/` | Dockerfiles and AWS config for the monitoring images: Prometheus, Loki, Grafana, Fluent Bit |
 
 ## Why two stacks
 
@@ -41,9 +42,18 @@ bucket, then moves its own state into it. From then on both stacks keep their st
 | AWS traffic | S3 gateway endpoint and ECR and CloudWatch Logs interface endpoints | Image pulls and logs stay inside the VPC instead of going through the NAT gateways |
 | Flow logs | All traffic, to CloudWatch Logs, kept 7 days | Shows what talks to what, e.g. tasks reaching ECR through the endpoints |
 | Backend | 2 Fargate tasks (one per zone), ARM64, 0.25 vCPU / 0.5 GB, behind an internal ALB | Real layout, smallest Fargate size, ARM is cheaper |
-| ALB | Internal, plain HTTP, no inbound rule until CloudFront is added | Reachable only through CloudFront; no domain, so no certificate |
+| ALB | Internal, plain HTTP, reachable only from CloudFront's origin-facing addresses | No domain, so no certificate; the traffic stays on AWS's network |
+| Public entry | One CloudFront distribution: the frontend from a private S3 bucket (Origin Access Control), `/api/*` and `/grafana/*` from the ALB through a VPC origin | One URL, no CORS, nothing else public |
+| Edge locations | `PriceClass_100`: Europe and North America | The cheapest class |
+| WAF, CDN logs | None | WAF costs from ~$5/month before traffic; logs are left to the monitoring |
+| Frontend build | In Deploy, after apply: built, synced to the bucket, `index.html` invalidated | The bucket only exists after apply |
 | Rollout | Circuit breaker with rollback; Deploy waits for the service to be stable | A broken image fails Deploy instead of crash-looping behind a green run |
-| Container logs | CloudWatch Logs (`awslogs`), kept 7 days; Container Insights off | Works through the Logs endpoint; our own monitoring covers the metrics |
+| Container logs | CloudWatch Logs, kept 7 days; Container Insights off | Works through the Logs endpoint; our own monitoring covers the metrics |
+| Monitoring config | Baked into our own images, built with the backend | Versioned with the code; nothing pulls from Docker Hub at runtime |
+| Service discovery | Cloud Map private DNS, `observability.internal` | Prometheus scrapes every backend task by IP; services reach each other by name |
+| Backend logs (self-hosted) | FireLens: a Fluent Bit sidecar ships to Loki, with a copy in CloudWatch | Fargate has no Docker socket for Alloy to read |
+| Storage | Loki in S3; Prometheus on the task's disk; Grafana stateless | Loki's recommended setup; every Destroy wipes the data anyway |
+| Grafana access | Anonymous Viewer, login disabled | Dashboards are public and read-only; nobody can change them |
 
 ## Prerequisites
 
@@ -127,10 +137,24 @@ can't remove it.
 
 ## Images
 
-The **Build images** workflow (Actions → Build images → Run workflow) builds the backend image on an
-ARM runner and pushes it to ECR as `<project>/backend:<commit SHA>`. Like Deploy, it only runs from
-`main`. If the commit already has an image, it skips the push. ECR copies each image to the replica
-region; the copies get the same settings through a repository creation template.
+The **Build images** workflow (Actions → Build images → Run workflow) builds every image on ARM runners
+and pushes each to ECR as `<project>/<image>:<commit SHA>`. Like Deploy, it only runs from `main`. If
+the commit already has an image, it skips that push.
+
+| Image | Built from |
+| --- | --- |
+| `backend` | `backend/Dockerfile` |
+| `prometheus` | `prom/prometheus` + `images/prometheus/prometheus.yml` + the alert rules from `observability/rules/` |
+| `loki` | `grafana/loki` + `images/loki/loki.yml` (S3 storage) |
+| `grafana` | `grafana/grafana` + the data sources in `images/grafana/` + the dashboards from `observability/dashboards/` |
+| `fluent-bit` | AWS for Fluent Bit + `images/fluent-bit/outputs.conf` (Loki and CloudWatch outputs) |
+
+The monitoring config differs from `local/` only where AWS differs: Cloud Map names instead of
+compose hostnames, S3 instead of a local disk, FireLens instead of Alloy and the Docker socket.
+
+ECR copies each image to the replica region; the copies get the same settings through a repository
+creation template. ECR copies each image to the replica region; the copies get the same settings through a repository
+creation template.
 
 The frontend has no image: it's served from S3 as static files.
 
@@ -148,7 +172,8 @@ concurrency group, so they never run at the same time.
 | **Destroy** | `confirm`: type `destroy` | Reads the region, mode and image tag from the state, so it always targets what is deployed |
 
 `image_tag` defaults to the commit Deploy runs on, so after merging to `main`: run Build images,
-then Deploy. To roll back, deploy an older tag; ECR keeps the last 10.
+then Deploy. Creating or deleting the CloudFront distribution and its VPC origin takes 10–15 minutes,
+so expect Deploy and Destroy to take about 20. To roll back, deploy an older tag; ECR keeps the last 10.
 
 To change region: run Destroy, then Deploy with the new region. Terraform doesn't move resources
 between regions; it would create new ones and leave the old ones running, unmanaged.
@@ -164,10 +189,27 @@ subject to `…:environment:<name>`, which the apply role doesn't trust.
 | Public subnets | `10.0.0.0/24`, `10.0.1.0/24` | The NAT gateways |
 | Private subnets | `10.0.16.0/20`, `10.0.32.0/20` | The ALB, the Fargate tasks, the interface endpoints |
 
-The zones are the first two of the region, looked up at plan time. The backend tasks accept traffic
-only from the ALB; the ALB accepts none until CloudFront is added. Flow logs go to the
+The zones are the first two of the region, looked up at plan time. Flow logs go to the
 `/aws/vpc-flow-log/<vpc-id>` log group. The NAT gateways and interface endpoints are billed by the
 hour, which is most of the stack's cost while it's deployed.
+
+### What runs
+
+| Service | Tasks | Size | Reached at |
+| --- | --- | --- | --- |
+| Backend | 2, one per zone | 0.25 vCPU / 0.5 GB + Fluent Bit sidecar | `/api/*` through CloudFront; metrics on `backend.observability.internal:9100` |
+| Prometheus | 1 | 0.5 vCPU / 1 GB | `prometheus.observability.internal:9090`, from Grafana only |
+| Loki | 1 | 0.5 vCPU / 1 GB | `loki.observability.internal:3100`, from Grafana and Fluent Bit |
+| Grafana | 1 | 0.25 vCPU / 0.5 GB | `/grafana/` through CloudFront |
+
+The monitoring services only exist in `self_hosted` mode. In `managed` mode the backend logs to
+CloudWatch only, and CloudFront serves `/api/*` alone.
+
+Each security group allows only the traffic in the table: CloudFront's origin-facing prefix list to
+the ALB, the ALB to the backend and Grafana, Prometheus to the backend's metrics port, Fluent Bit to
+Loki, and Grafana to Prometheus and Loki.
+
+After a Deploy, the run summary has the app's URL and Grafana's.
 
 ### Running it locally
 
@@ -184,7 +226,7 @@ AWS_PROFILE=observability-lab terraform -chdir=infrastructure/main init \
 | `region` | `eu-central-2` | Region for every resource in the stack |
 | `monitoring_mode` | `self_hosted` | `self_hosted` or `managed` |
 | `project` | `observability-lab` | Name prefix and `Project` tag |
-| `image_tag` | (required) | Backend image tag, a git SHA. Must exist in ECR in `region` |
+| `image_tag` | (required) | Image tag, a git SHA. The images must exist in ECR in `region` |
 
 Amazon Managed Grafana isn't available in Zurich. With `monitoring_mode = "managed"`, set `region` to
 a region that has it, e.g. `eu-central-1` (Frankfurt); otherwise the plan fails and lists the

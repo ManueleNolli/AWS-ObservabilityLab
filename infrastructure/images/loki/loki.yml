@@ -1,0 +1,33 @@
+# Single-binary Loki with chunks and index in S3. The task's role grants the bucket access;
+# LOKI_BUCKET and LOKI_REGION come from the task definition.
+# /tmp/loki holds the write-ahead log and the index cache: lost with the task, rebuilt from S3.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /tmp/loki
+  storage:
+    s3:
+      bucketnames: ${LOKI_BUCKET}
+      region: ${LOKI_REGION}
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+analytics:
+  reporting_enabled: false

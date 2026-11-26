@@ -28,3 +28,17 @@ variable "desired_count" {
   type        = number
   default     = 2
 }
+
+variable "service_discovery_namespace_id" {
+  description = "Cloud Map namespace the tasks register in, as backend.<namespace>."
+  type        = string
+}
+
+variable "log_router" {
+  description = "FireLens log router: its image (with the outputs config) and the Loki host it ships to. Null logs to CloudWatch only."
+  type = object({
+    image     = string
+    loki_host = string
+  })
+  default = null
+}

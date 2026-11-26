@@ -22,7 +22,7 @@ variable "monitoring_mode" {
 }
 
 variable "image_tag" {
-  description = "Tag of the backend image in ECR: the git SHA it was built from. Deploy sets it."
+  description = "Tag of the images in ECR: the git SHA they were built from. Deploy sets it."
   type        = string
 
   validation {

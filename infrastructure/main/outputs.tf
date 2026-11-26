@@ -11,6 +11,28 @@ output "monitoring_mode" {
 }
 
 output "image_tag" {
-  description = "Backend image tag the stack is deployed with."
+  description = "Image tag the stack is deployed with."
   value       = var.image_tag
+}
+
+# Read by Deploy to upload the frontend.
+
+output "url" {
+  description = "Public URL of the lab."
+  value       = module.cdn.url
+}
+
+output "grafana_url" {
+  description = "Grafana's URL, in self_hosted mode."
+  value       = local.self_hosted ? "${module.cdn.url}/grafana/" : null
+}
+
+output "frontend_bucket" {
+  description = "Bucket the frontend build is uploaded to."
+  value       = module.cdn.frontend_bucket
+}
+
+output "distribution_id" {
+  description = "CloudFront distribution, for invalidations."
+  value       = module.cdn.distribution_id
 }
