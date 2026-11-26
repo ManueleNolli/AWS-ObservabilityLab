@@ -137,6 +137,8 @@ jobs:
     env:
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
       TF_STATE_REGION: ${{ vars.TF_STATE_REGION }}
+      # A plan doesn't need the image to exist.
+      TF_VAR_image_tag: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v7
 

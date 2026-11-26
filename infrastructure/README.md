@@ -40,6 +40,10 @@ bucket, then moves its own state into it. From then on both stacks keep their st
 | Network | `terraform-aws-modules/vpc`, 2 zones, a NAT gateway per zone; only the NAT gateways are in public subnets | Close to a production layout: nothing but CloudFront reaches the app |
 | AWS traffic | S3 gateway endpoint and ECR and CloudWatch Logs interface endpoints | Image pulls and logs stay inside the VPC instead of going through the NAT gateways |
 | Flow logs | All traffic, to CloudWatch Logs, kept 7 days | Shows what talks to what, e.g. tasks reaching ECR through the endpoints |
+| Backend | 2 Fargate tasks (one per zone), ARM64, 0.25 vCPU / 0.5 GB, behind an internal ALB | Real layout, smallest Fargate size, ARM is cheaper |
+| ALB | Internal, plain HTTP, no inbound rule until CloudFront is added | Reachable only through CloudFront; no domain, so no certificate |
+| Rollout | Circuit breaker with rollback; Deploy waits for the service to be stable | A broken image fails Deploy instead of crash-looping behind a green run |
+| Container logs | CloudWatch Logs (`awslogs`), kept 7 days; Container Insights off | Works through the Logs endpoint; our own monitoring covers the metrics |
 
 ## Prerequisites
 
@@ -140,8 +144,11 @@ concurrency group, so they never run at the same time.
 
 | Workflow | Inputs | Notes |
 | --- | --- | --- |
-| **Deploy** | `region`, `monitoring_mode` | Refuses a region other than the one the stack is deployed in |
-| **Destroy** | `confirm`: type `destroy` | Reads the region and mode from the state, so it always targets what is deployed |
+| **Deploy** | `region`, `monitoring_mode`, `image_tag` | Refuses a region other than the one the stack is deployed in, and an image that isn't in ECR |
+| **Destroy** | `confirm`: type `destroy` | Reads the region, mode and image tag from the state, so it always targets what is deployed |
+
+`image_tag` defaults to the commit Deploy runs on, so after merging to `main`: run Build images,
+then Deploy. To roll back, deploy an older tag; ECR keeps the last 10.
 
 To change region: run Destroy, then Deploy with the new region. Terraform doesn't move resources
 between regions; it would create new ones and leave the old ones running, unmanaged.
@@ -157,7 +164,8 @@ subject to `…:environment:<name>`, which the apply role doesn't trust.
 | Public subnets | `10.0.0.0/24`, `10.0.1.0/24` | The NAT gateways |
 | Private subnets | `10.0.16.0/20`, `10.0.32.0/20` | The ALB, the Fargate tasks, the interface endpoints |
 
-The zones are the first two of the region, looked up at plan time. Flow logs go to the
+The zones are the first two of the region, looked up at plan time. The backend tasks accept traffic
+only from the ALB; the ALB accepts none until CloudFront is added. Flow logs go to the
 `/aws/vpc-flow-log/<vpc-id>` log group. The NAT gateways and interface endpoints are billed by the
 hour, which is most of the stack's cost while it's deployed.
 
@@ -176,6 +184,7 @@ AWS_PROFILE=observability-lab terraform -chdir=infrastructure/main init \
 | `region` | `eu-central-2` | Region for every resource in the stack |
 | `monitoring_mode` | `self_hosted` | `self_hosted` or `managed` |
 | `project` | `observability-lab` | Name prefix and `Project` tag |
+| `image_tag` | (required) | Backend image tag, a git SHA. Must exist in ECR in `region` |
 
 Amazon Managed Grafana isn't available in Zurich. With `monitoring_mode = "managed"`, set `region` to
 a region that has it, e.g. `eu-central-1` (Frankfurt); otherwise the plan fails and lists the
