@@ -14,7 +14,7 @@ on:
         options: [self_hosted, managed]
         default: self_hosted
       image_tag:
-        description: Backend image tag (a git SHA). Empty deploys the image of the commit this runs on.
+        description: Image tag (a git SHA). Empty deploys the images of the commit this runs on.
         type: string
         required: false
 
@@ -78,15 +78,26 @@ jobs:
             exit 1
           fi
 
-      # Images come from the separate Build images workflow; deploying doesn't build one.
-      - name: Check image
+      # Images come from the separate Build images workflow; deploying doesn't build any.
+      - name: Check images
         env:
           ECR_REPOSITORY_PREFIX: ${{ vars.ECR_REPOSITORY_PREFIX }}
         run: |
-          repository="${ECR_REPOSITORY_PREFIX#*/}/backend"
-          if ! aws ecr describe-images --region "$TF_VAR_region" --repository-name "$repository" \
-            --image-ids "imageTag=$TF_VAR_image_tag" >/dev/null 2>&1; then
-            echo "::error::No $repository:$TF_VAR_image_tag in $TF_VAR_region. Run Build images first."
+          images=(backend)
+          if [[ "$TF_VAR_monitoring_mode" == self_hosted ]]; then
+            images+=(prometheus loki grafana fluent-bit)
+          fi
+          missing=0
+          for image in "${images[@]}"; do
+            repository="${ECR_REPOSITORY_PREFIX#*/}/$image"
+            if ! aws ecr describe-images --region "$TF_VAR_region" --repository-name "$repository" \
+              --image-ids "imageTag=$TF_VAR_image_tag" >/dev/null 2>&1; then
+              echo "::error::No $repository:$TF_VAR_image_tag in $TF_VAR_region."
+              missing=1
+            fi
+          done
+          if (( missing )); then
+            echo "::error::Run Build images first."
             exit 1
           fi
 
@@ -94,12 +105,52 @@ jobs:
         run: |
           terraform plan -input=false -lock-timeout=5m -out=tfplan
           {
-            echo "## Deploy: $TF_VAR_region, $TF_VAR_monitoring_mode, backend $TF_VAR_image_tag"
+            echo "## Deploy: $TF_VAR_region, $TF_VAR_monitoring_mode, images $TF_VAR_image_tag"
             echo '```'
             terraform show -no-color tfplan
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Applies exactly the plan above, and waits until the backend tasks are healthy.
+      # Applies exactly the plan above, and waits until every service is healthy.
       - name: Apply
         run: terraform apply -input=false -lock-timeout=5m tfplan
+
+      - name: Read outputs
+        run: |
+          outputs="$(terraform output -json)"
+          {
+            echo "URL=$(jq -r '.url.value' <<<"$outputs")"
+            echo "GRAFANA_URL=$(jq -r '.grafana_url.value // empty' <<<"$outputs")"
+            echo "FRONTEND_BUCKET=$(jq -r '.frontend_bucket.value' <<<"$outputs")"
+            echo "DISTRIBUTION_ID=$(jq -r '.distribution_id.value' <<<"$outputs")"
+          } >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # Grafana is on the same distribution, so its link is a path, not a URL.
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          VITE_GRAFANA_URL: ${{ inputs.monitoring_mode == 'self_hosted' && '/grafana/' || '' }}
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+      # Vite puts a content hash in every asset name, so assets are cached forever; index.html,
+      # which points at them, is never cached.
+      - name: Upload frontend
+        working-directory: frontend
+        run: |
+          aws s3 sync dist/ "s3://$FRONTEND_BUCKET/" --delete --exclude index.html \
+            --cache-control "public, max-age=31536000, immutable"
+          aws s3 cp dist/index.html "s3://$FRONTEND_BUCKET/index.html" --cache-control "no-cache"
+          aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths /index.html >/dev/null
+          {
+            echo "## Deployed"
+            echo "- App: $URL"
+            if [[ -n "$GRAFANA_URL" ]]; then echo "- Grafana: $GRAFANA_URL"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
