@@ -1,0 +1,248 @@
+{
+  "uid": "obs-lab-logs-cloudwatch",
+  "title": "Observability Lab / Logs",
+  "description": "Structured JSON logs of the demo backend, queried with CloudWatch Logs Insights.",
+  "tags": [
+    "observability-lab",
+    "logs"
+  ],
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 41,
+  "version": 1,
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "refresh": "30s",
+  "timezone": "browser",
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "CloudWatch",
+        "type": "datasource",
+        "query": "cloudwatch",
+        "current": {},
+        "hide": 0,
+        "refresh": 1,
+        "regex": "",
+        "options": []
+      },
+      {
+        "name": "search",
+        "label": "Search",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "hide": 0
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Log volume by level",
+      "description": "Lines per level, from Logs Insights stats.",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "queryMode": "Logs",
+          "queryLanguage": "CWLI",
+          "region": "default",
+          "id": "",
+          "logGroups": [
+            {
+              "arn": "__BACKEND_LOG_GROUP_ARN__",
+              "name": "__BACKEND_LOG_GROUP__"
+            }
+          ],
+          "expression": "stats count(*) as lines by bin($__interval), level",
+          "statsGroups": [
+            "level"
+          ]
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "info"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "warning"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "error"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "type": "logs",
+      "title": "Warnings and errors",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 7
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "queryMode": "Logs",
+          "queryLanguage": "CWLI",
+          "region": "default",
+          "id": "",
+          "logGroups": [
+            {
+              "arn": "__BACKEND_LOG_GROUP_ARN__",
+              "name": "__BACKEND_LOG_GROUP__"
+            }
+          ],
+          "expression": "fields @timestamp, @message, level, logger, request_id\n| filter level in [\"warning\", \"error\"]\n| filter @message like /(?i)$search/\n| sort @timestamp desc\n| limit 500"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
+    },
+    {
+      "id": 3,
+      "type": "logs",
+      "title": "All backend logs",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "queryMode": "Logs",
+          "queryLanguage": "CWLI",
+          "region": "default",
+          "id": "",
+          "logGroups": [
+            {
+              "arn": "__BACKEND_LOG_GROUP_ARN__",
+              "name": "__BACKEND_LOG_GROUP__"
+            }
+          ],
+          "expression": "fields @timestamp, @message, level, logger, request_id\n| filter @message like /(?i)$search/\n| sort @timestamp desc\n| limit 1000"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
+    }
+  ]
+}

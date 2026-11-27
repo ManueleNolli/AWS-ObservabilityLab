@@ -17,6 +17,19 @@ provider "aws" {
   region = "us-east-1"
 }
 
+# managed mode: where IAM Identity Center lives, to look up the Grafana admin.
+provider "aws" {
+  alias  = "identity_center"
+  region = coalesce(var.identity_center_region, var.region)
+}
+
+# managed mode: the Amazon Managed Grafana workspace created below, through its service account. In
+# self_hosted mode nothing uses it.
+provider "grafana" {
+  url  = local.self_hosted ? null : module.managed_grafana[0].url
+  auth = local.self_hosted ? null : module.managed_grafana[0].service_account_token
+}
+
 data "aws_caller_identity" "current" {}
 
 locals {
@@ -118,4 +131,28 @@ module "managed_monitoring" {
   backend_security_group_id = module.backend.tasks_security_group_id
   backend_metrics_port      = module.backend.metrics_port
   alert_rules_file          = "${path.root}/../../observability/rules/app-alerts.yml"
+}
+
+module "managed_grafana" {
+  source = "../modules/managed-grafana"
+  count  = local.self_hosted ? 0 : 1
+  providers = {
+    aws                 = aws
+    aws.identity_center = aws.identity_center
+  }
+
+  name                     = var.project
+  prometheus_workspace_arn = module.managed_monitoring[0].prometheus_workspace_arn
+  admin_user_name          = var.grafana_admin_user_name
+}
+
+module "grafana_content" {
+  source = "../modules/grafana-content"
+  count  = local.self_hosted ? 0 : 1
+
+  region                  = var.region
+  prometheus_endpoint     = module.managed_monitoring[0].prometheus_endpoint
+  backend_log_group_name  = module.backend.log_group_name
+  backend_log_group_arn   = module.backend.log_group_arn
+  overview_dashboard_file = "${path.root}/../../observability/dashboards/app-overview.json"
 }

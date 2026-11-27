@@ -15,6 +15,16 @@ output "image_tag" {
   value       = var.image_tag
 }
 
+output "grafana_admin_user_name" {
+  description = "Grafana admin the stack is deployed with, in managed mode."
+  value       = var.grafana_admin_user_name
+}
+
+output "identity_center_region" {
+  description = "IAM Identity Center region the stack is deployed with, in managed mode."
+  value       = var.identity_center_region
+}
+
 # Read by Deploy to upload the frontend.
 
 output "url" {
@@ -23,8 +33,8 @@ output "url" {
 }
 
 output "grafana_url" {
-  description = "Grafana's URL, in self_hosted mode."
-  value       = local.self_hosted ? "${module.cdn.url}/grafana" : null
+  description = "Grafana's URL: /grafana on the lab's URL when self-hosted, the Amazon Managed Grafana workspace when managed."
+  value       = local.self_hosted ? "${module.cdn.url}/grafana" : module.managed_grafana[0].url
 }
 
 output "prometheus_workspace_id" {
