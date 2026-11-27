@@ -43,8 +43,9 @@ module "vpc" {
 }
 
 # Keeps AWS traffic off the NAT gateways: S3 (ECR image layers live there) through a free gateway
-# endpoint, ECR and CloudWatch Logs through interface endpoints. Private DNS makes the normal service
-# hostnames resolve to the endpoints, so nothing else needs configuring.
+# endpoint, ECR and CloudWatch Logs through interface endpoints, plus Amazon Managed Prometheus's
+# remote writes when asked for. Private DNS makes the normal service hostnames resolve to the
+# endpoints, so nothing else needs configuring.
 module "vpc_endpoints" {
   source  = "terraform-aws-modules/vpc/aws//modules/vpc-endpoints"
   version = "~> 6.9"
@@ -62,7 +63,7 @@ module "vpc_endpoints" {
     }
   }
 
-  endpoints = {
+  endpoints = merge({
     s3 = {
       service         = "s3"
       service_type    = "Gateway"
@@ -80,5 +81,10 @@ module "vpc_endpoints" {
       service             = "logs"
       private_dns_enabled = true
     }
-  }
+    }, var.managed_prometheus_endpoint ? {
+    aps_workspaces = {
+      service             = "aps-workspaces"
+      private_dns_enabled = true
+    }
+  } : {})
 }

@@ -27,3 +27,13 @@ output "metrics_port" {
   description = "Port the tasks serve Prometheus metrics on."
   value       = local.metrics_port
 }
+
+output "log_group_name" {
+  description = "CloudWatch log group of the backend containers."
+  value       = aws_cloudwatch_log_group.this.name
+}
+
+output "log_group_arn" {
+  description = "ARN of the backend's log group, without the trailing :*."
+  value       = aws_cloudwatch_log_group.this.arn
+}

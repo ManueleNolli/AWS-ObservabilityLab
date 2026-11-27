@@ -77,6 +77,8 @@ jobs:
             echo "TF_VAR_region=$region"
             echo "TF_VAR_monitoring_mode=$(jq -r '.monitoring_mode.value' <<<"$outputs")"
             echo "TF_VAR_image_tag=$(jq -r '.image_tag.value' <<<"$outputs")"
+            echo "TF_VAR_grafana_admin_user_name=$(jq -r '.grafana_admin_user_name.value // empty' <<<"$outputs")"
+            echo "TF_VAR_identity_center_region=$(jq -r '.identity_center_region.value // empty' <<<"$outputs")"
           } >> "$GITHUB_ENV"
 
       - name: Plan

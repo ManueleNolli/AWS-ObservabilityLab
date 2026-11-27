@@ -57,7 +57,7 @@ module "ecr" {
   }
 
   name_prefix    = var.project
-  repositories   = ["backend", "prometheus", "loki", "grafana", "fluent-bit"]
+  repositories   = ["backend", "prometheus", "loki", "grafana", "fluent-bit", "adot"]
   replica_region = var.ecr_replica_region
 }
 

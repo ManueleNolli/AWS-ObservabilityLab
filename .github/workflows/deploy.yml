@@ -53,6 +53,9 @@ jobs:
       TF_VAR_region: ${{ inputs.region }}
       TF_VAR_monitoring_mode: ${{ inputs.monitoring_mode }}
       TF_VAR_image_tag: ${{ inputs.image_tag || github.sha }}
+      # managed mode only: who gets Admin in Amazon Managed Grafana, and where Identity Center lives.
+      TF_VAR_grafana_admin_user_name: ${{ vars.GRAFANA_ADMIN_USER }}
+      TF_VAR_identity_center_region: ${{ vars.IDENTITY_CENTER_REGION }}
     steps:
       # First: the job's working directory only exists after checkout.
       - uses: actions/checkout@v7
@@ -100,6 +103,8 @@ jobs:
           images=(backend)
           if [[ "$TF_VAR_monitoring_mode" == self_hosted ]]; then
             images+=(prometheus loki grafana fluent-bit)
+          else
+            images+=(adot)
           fi
           # ECR lives in the state bucket's region; anywhere else the images are replicas.
           attempts=1
@@ -152,11 +157,12 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      # Grafana is on the same distribution, so its link is a path, not a URL.
+      # Self-hosted Grafana is on the same distribution, so its link is a path; Amazon Managed
+      # Grafana has its own URL.
       - name: Build frontend
         working-directory: frontend
         env:
-          VITE_GRAFANA_URL: ${{ inputs.monitoring_mode == 'self_hosted' && '/grafana' || '' }}
+          VITE_GRAFANA_URL: ${{ inputs.monitoring_mode == 'self_hosted' && '/grafana' || env.GRAFANA_URL }}
         run: |
           npm ci --no-audit --no-fund
           npm run build

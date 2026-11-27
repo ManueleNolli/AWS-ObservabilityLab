@@ -34,6 +34,9 @@ jobs:
           - image: fluent-bit
             context: infrastructure/images/fluent-bit
             dockerfile: infrastructure/images/fluent-bit/Dockerfile
+          - image: adot
+            context: infrastructure/images/adot
+            dockerfile: infrastructure/images/adot/Dockerfile
     env:
       IMAGE: ${{ vars.ECR_REPOSITORY_PREFIX }}/${{ matrix.image }}:${{ github.sha }}
     steps:
