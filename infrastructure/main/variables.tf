@@ -30,3 +30,21 @@ variable "image_tag" {
     error_message = "image_tag must not be empty."
   }
 }
+
+variable "grafana_admin_user_name" {
+  description = "managed mode: IAM Identity Center user name that gets the Admin role in Amazon Managed Grafana."
+  type        = string
+  default     = null
+
+  validation {
+    # Deploy passes an empty string when the repository variable isn't set.
+    condition     = var.monitoring_mode != "managed" || try(length(var.grafana_admin_user_name), 0) > 0
+    error_message = "monitoring_mode = \"managed\" needs grafana_admin_user_name: your IAM Identity Center user name."
+  }
+}
+
+variable "identity_center_region" {
+  description = "managed mode: region of the IAM Identity Center instance. Defaults to region."
+  type        = string
+  default     = null
+}

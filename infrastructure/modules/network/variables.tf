@@ -8,3 +8,9 @@ variable "cidr" {
   type        = string
   default     = "10.0.0.0/16"
 }
+
+variable "managed_prometheus_endpoint" {
+  description = "Adds an aps-workspaces interface endpoint, for remote writes to Amazon Managed Prometheus. Billed by the hour, so only when needed."
+  type        = bool
+  default     = false
+}
