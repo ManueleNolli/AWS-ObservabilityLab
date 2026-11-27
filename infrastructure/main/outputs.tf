@@ -27,6 +27,11 @@ output "grafana_url" {
   value       = local.self_hosted ? "${module.cdn.url}/grafana" : null
 }
 
+output "prometheus_workspace_id" {
+  description = "Amazon Managed Prometheus workspace, in managed mode."
+  value       = local.self_hosted ? null : module.managed_monitoring[0].prometheus_workspace_id
+}
+
 output "frontend_bucket" {
   description = "Bucket the frontend build is uploaded to."
   value       = module.cdn.frontend_bucket

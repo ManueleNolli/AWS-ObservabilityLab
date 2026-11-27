@@ -10,7 +10,7 @@ in the console. The only manual work is logging in and running one script once p
 | `bootstrap/` | What has to exist before anything else: the state bucket, the GitHub OIDC provider, the CI roles, the ECR repositories and a budget alert. Applied from your laptop |
 | `main/` | The lab itself: network, ALB, Fargate, S3, CloudFront, monitoring. Applied by CI, destroyed when not in use |
 | `modules/` | Building blocks used by the stacks |
-| `images/` | Dockerfiles and AWS config for the monitoring images: Prometheus, Loki, Grafana, Fluent Bit |
+| `images/` | Dockerfiles and AWS config for the monitoring images: Prometheus, Loki, Grafana, Fluent Bit, ADOT |
 
 ## Why two stacks
 
@@ -39,7 +39,7 @@ bucket, then moves its own state into it. From then on both stacks keep their st
 | Image tags | The git commit SHA, immutable, one plain image per tag (no provenance attestation); the last 10 images are kept | Every deploy points at exactly one commit, and only deployable images count towards the 10 |
 | Image region | Replicated from the bootstrap region to `eu-central-1` | `managed` mode deploys to Frankfurt and pulls from its own region |
 | Network | `terraform-aws-modules/vpc`, 2 zones, a NAT gateway per zone; only the NAT gateways are in public subnets | Close to a production layout: nothing but CloudFront reaches the app |
-| AWS traffic | S3 gateway endpoint and ECR and CloudWatch Logs interface endpoints | Image pulls and logs stay inside the VPC instead of going through the NAT gateways |
+| AWS traffic | S3 gateway endpoint and ECR and CloudWatch Logs interface endpoints; in `managed` mode an `aps-workspaces` one too | Image pulls, logs and metrics stay inside the VPC instead of going through the NAT gateways |
 | Flow logs | All traffic, to CloudWatch Logs, kept 7 days | Shows what talks to what, e.g. tasks reaching ECR through the endpoints |
 | Backend | 2 Fargate tasks (one per zone), ARM64, 0.25 vCPU / 0.5 GB, behind an internal ALB | Real layout, smallest Fargate size, ARM is cheaper |
 | ALB | Internal, plain HTTP, reachable only from CloudFront's origin-facing addresses | No domain, so no certificate; the traffic stays on AWS's network |
@@ -54,6 +54,8 @@ bucket, then moves its own state into it. From then on both stacks keep their st
 | Backend logs (self-hosted) | FireLens: a Fluent Bit sidecar ships to Loki, with a copy in CloudWatch | Fargate has no Docker socket for Alloy to read |
 | Storage | Loki in S3; Prometheus on the task's disk; Grafana stateless | Loki's recommended setup; every Destroy wipes the data anyway |
 | Grafana access | Anonymous Viewer, login disabled | Dashboards are public and read-only; nobody can change them |
+| Metrics (managed) | Amazon Managed Prometheus, fed by an ADOT collector on Fargate with SigV4 remote write | AMP's own scrapers only work for EKS; ADOT is AWS's collector and signs requests out of the box |
+| Alert rules (managed) | The same `observability/rules/app-alerts.yml`, uploaded as an AMP rule group namespace | One rule file for every mode |
 
 ## Prerequisites
 
@@ -222,12 +224,12 @@ has an image, it skips that push, so a Deploy of an already built commit spends 
 | `loki` | `grafana/loki` + `images/loki/loki.yml` (S3 storage) |
 | `grafana` | `grafana/grafana` + the data sources in `images/grafana/` + the dashboards from `observability/dashboards/` |
 | `fluent-bit` | AWS for Fluent Bit + `images/fluent-bit/outputs.conf` (Loki and CloudWatch outputs) |
+| `adot` | AWS Distro for OpenTelemetry + `images/adot/config.yaml` (scrapes the backend, remote-writes to AMP) |
 
 The monitoring config differs from `local/` only where AWS differs: Cloud Map names instead of
 compose hostnames, S3 instead of a local disk, FireLens instead of Alloy and the Docker socket.
 
 ECR copies each image to the replica region; the copies get the same settings through a repository
-creation template. ECR copies each image to the replica region; the copies get the same settings through a repository
 creation template.
 
 The frontend has no image: it's served from S3 as static files.
@@ -277,13 +279,17 @@ hour, which is most of the stack's cost while it's deployed.
 | Prometheus | 1 | 0.5 vCPU / 1 GB | `prometheus.observability.internal:9090`, from Grafana only |
 | Loki | 1 | 0.5 vCPU / 1 GB | `loki.observability.internal:3100`, from Grafana and Fluent Bit |
 | Grafana | 1 | 0.25 vCPU / 0.5 GB | `/grafana` through CloudFront |
+| ADOT collector (`managed` only) | 1 | 0.25 vCPU / 0.5 GB | Nothing: it only connects out, to the backend's metrics port and AMP |
 
-The monitoring services only exist in `self_hosted` mode. In `managed` mode the backend logs to
-CloudWatch only, and CloudFront serves `/api/*` alone.
+Prometheus, Loki and Grafana only exist in `self_hosted` mode. In `managed` mode the backend logs to
+CloudWatch only, CloudFront serves `/api/*` alone, and the ADOT collector scrapes
+`backend.observability.internal:9100` every 10 seconds and remote-writes to an Amazon Managed
+Prometheus workspace through the `aps-workspaces` endpoint. The workspace evaluates the alert rules
+and logs rule errors to `/aws/prometheus/<project>`.
 
 Each security group allows only the traffic in the table: CloudFront's origin-facing prefix list to
 the ALB, the ALB to the backend and Grafana, Prometheus to the backend's metrics port, Fluent Bit to
-Loki, and Grafana to Prometheus and Loki.
+Loki, Grafana to Prometheus and Loki, and in `managed` mode the collector to the backend's metrics port.
 
 After a Deploy, the run summary has the app's URL and Grafana's.
 

@@ -100,6 +100,8 @@ jobs:
           images=(backend)
           if [[ "$TF_VAR_monitoring_mode" == self_hosted ]]; then
             images+=(prometheus loki grafana fluent-bit)
+          else
+            images+=(adot)
           fi
           # ECR lives in the state bucket's region; anywhere else the images are replicas.
           attempts=1

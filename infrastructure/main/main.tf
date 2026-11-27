@@ -25,18 +25,19 @@ locals {
   # ECR in var.region: the original in the bootstrap region, the replica anywhere else. Every image is
   # built from the same commit, so they share one tag.
   images = {
-    for name in ["backend", "prometheus", "loki", "grafana", "fluent-bit"] :
+    for name in ["backend", "prometheus", "loki", "grafana", "fluent-bit", "adot"] :
     name => "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com/${var.project}/${name}:${var.image_tag}"
   }
 
-  # Baked into the Prometheus, Grafana and Fluent Bit configs in infrastructure/images/.
+  # Baked into the Prometheus, Grafana, Fluent Bit and ADOT configs in infrastructure/images/.
   service_discovery_namespace = "observability.internal"
 }
 
 module "network" {
   source = "../modules/network"
 
-  name = var.project
+  name                        = var.project
+  managed_prometheus_endpoint = !local.self_hosted
 }
 
 # Private DNS for the services: backend.observability.internal, prometheus.…, loki.…
@@ -45,7 +46,7 @@ resource "aws_service_discovery_private_dns_namespace" "this" {
   vpc  = module.network.vpc_id
 }
 
-# Shared by the backend and, later, the self-hosted monitoring services.
+# Shared by the backend and the monitoring services, self-hosted or the managed-mode collector.
 resource "aws_ecs_cluster" "this" {
   name = var.project
 
@@ -103,4 +104,18 @@ module "monitoring" {
   backend_security_group_id = module.backend.tasks_security_group_id
   backend_metrics_port      = module.backend.metrics_port
   grafana_root_url          = "${module.cdn.url}/grafana/"
+}
+
+module "managed_monitoring" {
+  source = "../modules/managed-monitoring"
+  count  = local.self_hosted ? 0 : 1
+
+  name                      = var.project
+  vpc_id                    = module.network.vpc_id
+  subnet_ids                = module.network.private_subnet_ids
+  cluster_id                = aws_ecs_cluster.this.id
+  collector_image           = local.images["adot"]
+  backend_security_group_id = module.backend.tasks_security_group_id
+  backend_metrics_port      = module.backend.metrics_port
+  alert_rules_file          = "${path.root}/../../observability/rules/app-alerts.yml"
 }

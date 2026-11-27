@@ -1,0 +1,43 @@
+# Scrapes the backend tasks like self-hosted Prometheus does and remote-writes to Amazon Managed
+# Prometheus, signing each request with the task role's credentials. AMP_REMOTE_WRITE_URL and
+# AWS_REGION come from the task definition.
+
+extensions:
+  sigv4auth:
+    region: ${env:AWS_REGION}
+    service: aps
+  # Read by the image's /healthcheck binary, which the ECS health check runs.
+  health_check:
+    endpoint: localhost:13133
+
+receivers:
+  prometheus:
+    config:
+      global:
+        scrape_interval: 10s
+      scrape_configs:
+        # Same job as infrastructure/images/prometheus/prometheus.yml, so the dashboards and alert rules
+        # see the same job and instance labels.
+        - job_name: backend
+          dns_sd_configs:
+            - names: ["backend.observability.internal"]
+              type: A
+              port: 9100
+              refresh_interval: 30s
+
+processors:
+  batch: {}
+
+exporters:
+  prometheusremotewrite:
+    endpoint: ${env:AMP_REMOTE_WRITE_URL}
+    auth:
+      authenticator: sigv4auth
+
+service:
+  extensions: [sigv4auth, health_check]
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      processors: [batch]
+      exporters: [prometheusremotewrite]
